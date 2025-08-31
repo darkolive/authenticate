@@ -1,0 +1,15 @@
+# Root ignores for the authenticate repository
+
+# macOS
+.DS_Store
+
+# Editors/IDEs
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
+
+# Misc OS files
+Thumbs.db
