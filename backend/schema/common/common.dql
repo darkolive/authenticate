@@ -1,0 +1,47 @@
+### Common Predicates
+# Predicates shared across multiple types/modules to avoid duplication.
+
+##### Common relationship predicates
+user: uid @reverse .                         # Reference to User entity with reverse edges
+
+##### Common timestamp predicates  
+createdAt: datetime @index(hour) .         # Creation timestamp
+updatedAt: datetime @index(hour) .         # Last update timestamp
+expiresAt: datetime @index(hour) .         # Expiration timestamp
+verifiedAt: datetime @index(hour) .        # Verification timestamp
+
+##### Common identifier predicates
+userId: string @index(exact) .             # User identifier (hashed)
+token: string @index(exact) @upsert .      # Generic token field (unique)
+type: string @index(exact) .               # Generic type classifier
+tenantId: string @index(exact) .           # Tenant identifier for multitenancy
+
+##### Common name predicates
+name: string @index(exact, term) .         # Generic name field (searchable, exact)
+displayName: string @lang @index(exact, term) .   # Display name (searchable, localized)
+description: string @lang .                # Generic description field (localized)
+
+##### Common network/session predicates
+ipAddress: uid .                           # Reference to IPAddress entity (normalize PII)
+ipHash: string @index(exact) .             # Hashed/truncated IP for non-PII analytics
+userAgent: uid .                           # Reference to UserAgent entity
+deviceRef: uid .                           # Reference to Device entity
+deviceId: string @index(exact) .           # Optional device identifier (raw)
+origin: uid .                              # Reference to Origin entity
+geoLocation: uid @reverse .                # Reference to GeoLocation entity
+tlsCipher: uid @reverse .                  # Reference to TLSCipher entity
+
+##### Common location predicates
+country: string @index(exact) .            # Country code (ISO 3166-1)
+region: string .                           # State/province/region
+city: string @index(term) .                # City name (searchable)
+latitude: float .                          # Geographic latitude
+longitude: float .                         # Geographic longitude
+
+##### Common platform/system predicates
+platform: string @index(exact) .           # Platform identifier
+version: string .                          # Version string
+
+##### Common verification predicates
+verified: bool @index(bool) .              # Verification status
+purpose: string @index(exact) .            # Purpose/intent classifier

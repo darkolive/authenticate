@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.hypermode.com/modus.json",
+  "endpoints": {
+    "default": {
+      "type": "graphql",
+      "path": "/graphql",
+      "auth": "bearer-token"
+    }
+  },
+  "connections": {
+    "dgraph": {
+      "type": "dgraph",
+      "connString": "dgraph://localhost:9080"
+    },
+    "mailersend": {
+      "type": "http",
+      "baseUrl": "https://api.mailersend.com/",
+      "headers": {
+        "Authorization": "Bearer {{API_KEY}}",
+        "Content-Type": "application/json"
+      }
+    }
+  }
+}

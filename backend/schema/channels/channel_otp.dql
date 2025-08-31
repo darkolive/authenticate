@@ -1,0 +1,18 @@
+type ChannelOTP {
+     user
+     otpHash
+     expiresAt
+     createdAt
+     verified
+     used
+     purpose
+     channelType
+     channelHash
+     tenantId
+ }
+
+ otpHash: string @index(exact) .
+ purpose: string @index(exact) .
+ channelType: string @index(exact) .
+ channelHash: string @index(exact) .
+ used: bool @index(bool) .

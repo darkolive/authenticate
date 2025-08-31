@@ -1,0 +1,14 @@
+type User {
+     status
+     did
+     roles
+     createdAt
+     updatedAt
+     lastSignin
+     tenantId
+ }
+
+ status: string @index(exact) .          # PENDING, ACTIVE, SUSPENDED, DELETED
+ did: string @index(exact) @upsert .     # Decentralised Identifier (unique)
+ roles: [uid] @reverse .
+ lastSignin: datetime @index(hour) .

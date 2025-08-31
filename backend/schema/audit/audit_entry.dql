@@ -1,0 +1,36 @@
+#### Audit Trail Schema for ISO 27001 Compliance that supports ThemisLog agent for immutable audit logging. Audit queries can be performed directly on AuditEntry type using indexed fields
+
+type AuditEntry {
+  id
+  category
+  action
+  objectType
+  objectId
+  performedBy
+  timestamp
+  details
+  previousValue
+  newValue
+  severity
+  source
+  retentionDate
+  ipHash
+  userAgent
+  tenantId
+}
+
+# Predicate definitions
+id: string @index(exact) .
+category: string @index(exact) .
+action: string @index(exact) .
+objectType: string @index(exact) .
+objectId: string @index(exact) .
+performedBy: string @index(exact) .
+timestamp: datetime @index(hour) .
+details: string .
+previousValue: string .
+newValue: string .
+severity: string @index(exact) .
+source: string @index(exact) .
+retentionDate: datetime @index(hour) .
+tenantId: string @index(exact) .

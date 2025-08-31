@@ -1,0 +1,18 @@
+type UserChannels {
+     user
+     userId
+     channelType
+     channelHash
+     channelKey
+     verified
+     primary
+     createdAt
+     lastUsedAt
+     tenantId
+ }
+
+channelType: string @index(exact) .
+channelHash: string @index(exact) .
+channelKey: string @index(exact) @upsert .  # userId|channelType|channelHash composite
+primary: bool @index(bool) .
+lastUsedAt: datetime @index(hour) .

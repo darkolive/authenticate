@@ -1,0 +1,51 @@
+type GeoLocation {
+     country
+     region
+     city
+     latitude
+     longitude
+ }
+
+ type TLSCipher {
+     name
+     description
+ }
+
+ type UserAgent {
+    name
+    version
+    platform
+    device
+    browser
+    uaKey
+    raw
+ }
+
+ type Device {
+     name
+     model
+     brand
+     os
+     osVersion
+ }
+
+ type Origin {
+     name
+     url
+     referrer
+ }
+
+ type IPAddress {
+     address
+     type
+     country
+     region
+     city
+     latitude
+     longitude
+ }
+
+# Predicate definitions (only those not covered in common)
+address: string @index(exact) .
+uaKey: string @index(exact) @upsert .
+raw: string .

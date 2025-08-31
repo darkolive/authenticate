@@ -1,0 +1,40 @@
+#### Comprehensive user management system with roles, permissions, and ISO compliance
+
+type PermissionCategory {
+    id
+    displayName
+    actionTypes
+    tenantId
+}
+
+type ActionType {
+    code
+    description
+    tenantId
+}
+
+type Permission {
+    categoryRef
+    actionRef
+    permKey
+    tenantId
+}
+
+type Role {
+    name
+    permissions
+    defaultDashboard
+    roleKey
+    tenantId
+}
+
+# Predicate definitions
+id: string @index(exact) @upsert .
+code: string @index(exact) @upsert .
+permissions: [uid] @reverse .
+actionTypes: [uid] @reverse .
+permKey: string @index(exact) @upsert .   # category|action composite key
+roleKey: string @index(exact) @upsert .   # tenantId|Role.name composite key
+categoryRef: uid @reverse .
+actionRef: uid @reverse .
+defaultDashboard: string @index(exact) .

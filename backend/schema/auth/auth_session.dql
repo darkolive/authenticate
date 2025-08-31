@@ -1,0 +1,24 @@
+type AuthSession {
+    user
+    method
+    createdAt
+    expiresAt
+    ipAddress
+    ipHash
+    userAgent
+    deviceRef
+    deviceId
+    origin
+    geoLocation
+    tlsCipher
+    sessionKey
+    revoked
+    terminatedAt
+    tenantId
+}
+
+user: uid @reverse .
+method: string @index(exact) .
+sessionKey: string @index(exact) @upsert .
+revoked: bool @index(bool) .
+terminatedAt: datetime @index(hour) .
