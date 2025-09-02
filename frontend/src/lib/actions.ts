@@ -16,6 +16,8 @@ if (!MODUS_API_KEY) {
 export type OTPRequest = {
   channel: "email" | "sms" | "whatsapp" | "telegram";
   recipient: string;
+  ipAddress?: string;
+  userAgent?: string;
 };
 
 export type OTPResponse = {
@@ -30,6 +32,8 @@ export type OTPResponse = {
 export type VerifyOTPRequest = {
   otpCode: string;
   recipient: string;
+  ipAddress?: string;
+  userAgent?: string;
 };
 
 export type VerifyOTPResponse = {
@@ -38,6 +42,24 @@ export type VerifyOTPResponse = {
   userId?: string;
   action?: "signin" | "register";
   channelDID?: string;
+};
+
+export type CerberusGateRequest = {
+  channelDID?: string;
+  channelType: "email" | "phone";
+  recipient: string;
+  ipAddress: string;
+  userAgent: string;
+};
+
+export type CerberusGateResponse = {
+  userExists: boolean;
+  action: "signin" | "register";
+  userId?: string;
+  availableMethods: string[];
+  nextStep: string;
+  message?: string;
+  auditEventId?: string;
 };
 
 export type UserRegistrationRequest = {
@@ -89,8 +111,8 @@ async function fetchGraphQL<T>(query: string, variables?: Record<string, unknown
 
 export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
   const query = /* GraphQL */ `
-    query SendOTP($channel: String!, $recipient: String!) {
-      sendOTP(req: { channel: $channel, recipient: $recipient }) {
+    query SendOTP($channel: String!, $recipient: String!, $ipAddress: String, $userAgent: String) {
+      sendOTP(req: { channel: $channel, recipient: $recipient, iPAddress: $ipAddress, userAgent: $userAgent }) {
         otpId: oTPID
         sent
         verified
@@ -104,14 +126,16 @@ export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
   const data = await fetchGraphQL<Data>(query, {
     channel: req.channel,
     recipient: req.recipient,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
   });
   return data.sendOTP;
 }
 
 export async function verifyOTP(req: VerifyOTPRequest): Promise<VerifyOTPResponse> {
   const query = /* GraphQL */ `
-    query VerifyOTP($otpCode: String!, $recipient: String!) {
-      verifyOTP(req: { oTPCode: $otpCode, recipient: $recipient }) {
+    query VerifyOTP($otpCode: String!, $recipient: String!, $ipAddress: String, $userAgent: String) {
+      verifyOTP(req: { oTPCode: $otpCode, recipient: $recipient, iPAddress: $ipAddress, userAgent: $userAgent }) {
         verified
         message
         userId: userID
@@ -124,6 +148,8 @@ export async function verifyOTP(req: VerifyOTPRequest): Promise<VerifyOTPRespons
   const data = await fetchGraphQL<Data>(query, {
     otpCode: req.otpCode,
     recipient: req.recipient,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
   });
   return data.verifyOTP;
 }
@@ -184,4 +210,196 @@ export async function registerUser(req: UserRegistrationRequest): Promise<UserRe
     userAgent: req.userAgent,
   });
   return data.registerUser;
+}
+
+export async function cerberusGate(req: CerberusGateRequest): Promise<CerberusGateResponse> {
+  const query = /* GraphQL */ `
+    query CerberusGate(
+      $channelDID: String!,
+      $channelType: String!,
+      $recipient: String!,
+      $ipAddress: String!,
+      $userAgent: String!
+    ) {
+      cerberusGate(
+        req: {
+          channelDID: $channelDID,
+          channelType: $channelType,
+          recipient: $recipient,
+          iPAddress: $ipAddress,
+          userAgent: $userAgent
+        }
+      ) {
+        userExists
+        action
+        userId: userID
+        availableMethods
+        nextStep
+        message
+        auditEventId: auditEventID
+      }
+    }
+  `;
+  type Data = { cerberusGate: CerberusGateResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    channelDID: req.channelDID,
+    channelType: req.channelType,
+    recipient: req.recipient,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+  });
+  return data.cerberusGate;
+}
+
+// WebAuthn actions
+export type BeginWebAuthnRegistrationRequest = {
+  userId: string;
+  displayName?: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
+export type BeginWebAuthnRegistrationResponse = {
+  optionsJSON: string;
+  challenge: string;
+  expiresAt: string;
+};
+
+export async function beginWebAuthnRegistration(
+  req: BeginWebAuthnRegistrationRequest
+): Promise<BeginWebAuthnRegistrationResponse> {
+  const query = /* GraphQL */ `
+    query BeginWebAuthnRegistration($userID: String!, $displayName: String!, $ipAddress: String, $userAgent: String) {
+      beginWebAuthnRegistration(
+        req: { userID: $userID, displayName: $displayName, iPAddress: $ipAddress, userAgent: $userAgent }
+      ) {
+        optionsJSON
+        challenge
+        expiresAt
+      }
+    }
+  `;
+  type Data = { beginWebAuthnRegistration: BeginWebAuthnRegistrationResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    displayName: req.displayName ?? "",
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+  });
+  return data.beginWebAuthnRegistration;
+}
+
+export type FinishWebAuthnRegistrationRequest = {
+  userId: string;
+  challenge: string;
+  credentialJSON: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
+export type FinishWebAuthnRegistrationResponse = {
+  success: boolean;
+  message: string;
+  credentialId?: string;
+};
+
+export async function finishWebAuthnRegistration(
+  req: FinishWebAuthnRegistrationRequest
+): Promise<FinishWebAuthnRegistrationResponse> {
+  const query = /* GraphQL */ `
+    query FinishWebAuthnRegistration(
+      $userID: String!,
+      $challenge: String!,
+      $credentialJSON: String!,
+      $ipAddress: String, $userAgent: String
+    ) {
+      finishWebAuthnRegistration(
+        req: { userID: $userID, challenge: $challenge, credentialJSON: $credentialJSON, iPAddress: $ipAddress, userAgent: $userAgent }
+      ) {
+        success
+        message
+        credentialId: credentialID
+      }
+    }
+  `;
+  type Data = { finishWebAuthnRegistration: FinishWebAuthnRegistrationResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    challenge: req.challenge,
+    credentialJSON: req.credentialJSON,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+  });
+  return data.finishWebAuthnRegistration;
+}
+
+export type BeginWebAuthnLoginRequest = {
+  userId: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
+export type BeginWebAuthnLoginResponse = {
+  optionsJSON: string;
+  challenge: string;
+  expiresAt: string;
+};
+
+export async function beginWebAuthnLogin(
+  req: BeginWebAuthnLoginRequest
+): Promise<BeginWebAuthnLoginResponse> {
+  const query = /* GraphQL */ `
+    query BeginWebAuthnLogin($userID: String!, $ipAddress: String, $userAgent: String) {
+      beginWebAuthnLogin(req: { userID: $userID, iPAddress: $ipAddress, userAgent: $userAgent }) {
+        optionsJSON
+        challenge
+        expiresAt
+      }
+    }
+  `;
+  type Data = { beginWebAuthnLogin: BeginWebAuthnLoginResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+  });
+  return data.beginWebAuthnLogin;
+}
+
+export type FinishWebAuthnLoginRequest = {
+  userId: string;
+  challenge: string;
+  credentialJSON: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
+export type FinishWebAuthnLoginResponse = {
+  success: boolean;
+  message: string;
+};
+
+export async function finishWebAuthnLogin(
+  req: FinishWebAuthnLoginRequest
+): Promise<FinishWebAuthnLoginResponse> {
+  const query = /* GraphQL */ `
+    query FinishWebAuthnLogin(
+      $userID: String!,
+      $challenge: String!,
+      $credentialJSON: String!,
+      $ipAddress: String, $userAgent: String
+    ) {
+      finishWebAuthnLogin(
+        req: { userID: $userID, challenge: $challenge, credentialJSON: $credentialJSON, iPAddress: $ipAddress, userAgent: $userAgent }
+      ) {
+        success
+        message
+      }
+    }
+  `;
+  type Data = { finishWebAuthnLogin: FinishWebAuthnLoginResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    challenge: req.challenge,
+    credentialJSON: req.credentialJSON,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+  });
+  return data.finishWebAuthnLogin;
 }

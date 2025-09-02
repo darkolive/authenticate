@@ -367,13 +367,31 @@ func RegisterUser(ctx context.Context, req UserRegistrationRequest) (UserRegistr
 	}
 	
 	// Step 4: Emit audit event for ISO compliance
+    // Compute UTC and best-effort local time based on requested timezone
+    utcNow := time.Now().UTC()
+    tzName := req.Timezone
+    loc, lerr := time.LoadLocation(tzName)
+    if lerr != nil || loc == nil {
+        loc = time.UTC
+        if tzName == "" {
+            tzName = "UTC"
+        }
+    }
+    localNow := utcNow.In(loc)
+    _, offset := localNow.Zone()
+
     // Build metadata, merging client-provided req.Metadata
     meta := map[string]interface{}{
-        "channelType":        req.ChannelType,
-        "channelDID":         req.ChannelDID,
-        "registrationSource": "HecateRegister",
-        "piiTokenized":       true,
-        "identityCheckID":    identityCheckID,
+        "channelType":            req.ChannelType,
+        "channelDID":             req.ChannelDID,
+        "registrationSource":     "HecateRegister",
+        "piiTokenized":           true,
+        "identityCheckID":        identityCheckID,
+        "timezone":               tzName,
+        "language":               req.Language,
+        "localTime":              localNow.Format(time.RFC3339),
+        "timestampUTC":           utcNow.Format(time.RFC3339),
+        "timezoneOffsetMinutes":  offset / 60,
     }
     if req.Metadata != nil {
         for k, v := range req.Metadata {
@@ -385,7 +403,7 @@ func RegisterUser(ctx context.Context, req UserRegistrationRequest) (UserRegistr
     auditEvent := AuditEvent{
         EventType: "UserRegistered",
         UserID:    userID,
-        Timestamp: time.Now(),
+        Timestamp: utcNow,
         IPAddress: req.IPAddress,
         UserAgent: req.UserAgent,
         Metadata:  meta,

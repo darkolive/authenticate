@@ -11,16 +11,27 @@ type WebAuthnCredential {
 user: uid @reverse .
 credentialId: string @index(exact) @upsert .
 addedAt: datetime @index(hour) .
+publicKey: string .
+signCount: int .
+transports: string .
+tenantId: string .
 
 ##### WebAuthn Challenges (temporary storage for registration/authentication)
 type WebAuthnChallenge {
     challenge
     userId
     type
+    sessionData
     expiresAt
     createdAt
     tenantId
 }
 
 challenge: string @index(exact) @upsert .
+userId: string @index(exact) .
+type: string @index(exact) .
+sessionData: string .
+expiresAt: datetime @index(hour) .
+createdAt: datetime @index(hour) .
+tenantId: string .
  

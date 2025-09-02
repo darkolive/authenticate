@@ -1,16 +1,6 @@
 import { NextResponse } from "next/server";
 import { registerUser, type UserRegistrationRequest } from "@/lib/actions";
-
-function getClientIP(headers: Headers): string | undefined {
-  const xfwd = headers.get("x-forwarded-for");
-  if (xfwd) {
-    // take first IP
-    const first = xfwd.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const real = headers.get("x-real-ip");
-  return real ?? undefined;
-}
+import { normalizeRecipient, getClientIp } from "@/lib/utils";
 
 export async function POST(req: Request) {
   try {
@@ -24,7 +14,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const ipAddress = getClientIP(headers) ?? "";
+    const ipAddress = getClientIp(req) ?? "";
     const userAgent = headers.get("user-agent") ?? "";
 
     // Ensure displayName is non-null for GraphQL (String!)
@@ -53,10 +43,13 @@ export async function POST(req: Request) {
     const langParsed = langFromHeader.split(",")[0]?.trim();
     const languageSafe = (langFromBody && langFromBody.trim()) || langParsed || "en-US";
 
+    const channelType = (body.channelType || "").toLowerCase() as UserRegistrationRequest["channelType"];
+    const recipient = normalizeRecipient(channelType, body.recipient);
+
     const payload: UserRegistrationRequest = {
       channelDID: body.channelDID,
-      channelType: body.channelType,
-      recipient: body.recipient,
+      channelType,
+      recipient,
       firstName: body.firstName,
       lastName: body.lastName,
       displayName: displayNameSafe,

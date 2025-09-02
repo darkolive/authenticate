@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { decodeRequestOptionsFromServer, decodeCreationOptionsFromServer, serializePublicKeyCredential } from "@/lib/webauthn";
 import {
   Form,
   FormControl,
@@ -27,6 +28,15 @@ type VerifyResp = {
   userId?: string;
   action?: "signin" | "register";
   channelDID?: string;
+};
+
+type CerberusResp = {
+  userExists: boolean;
+  action: "signin" | "register";
+  userId?: string;
+  availableMethods: string[];
+  nextStep: string;
+  message?: string;
 };
 
 type RegisterResp = {
@@ -105,6 +115,44 @@ export default function SignInPage() {
     }
   }
 
+  async function onCreatePasskey() {
+    try {
+      setWebauthnLoading(true);
+      if (!userId) throw new Error("Missing userId for passkey registration");
+
+      // 1) Begin registration -> get creation options
+      const beginRes = await fetch("/api/auth/webauthn/register/begin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const begin = await beginRes.json();
+      if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey registration");
+      const publicKey = decodeCreationOptionsFromServer(begin.options);
+
+      // 2) Create credential
+      const cred = (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
+      if (!cred) throw new Error("No credential returned");
+      const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
+
+      // 3) Finish registration -> store credential
+      const finishRes = await fetch("/api/auth/webauthn/register/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, challenge: begin.challenge, credentialJSON }),
+      });
+      const finish = await finishRes.json();
+      if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey registration failed");
+
+      toast.success(finish?.message || "Passkey added to your account");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to create passkey";
+      toast.error(msg);
+    } finally {
+      setWebauthnLoading(false);
+    }
+  }
+
   async function onVerifyOTP(values: z.infer<typeof otpSchema>) {
     try {
       const res = await fetch("/api/auth/verify-otp", {
@@ -119,11 +167,25 @@ export default function SignInPage() {
       const v = data as VerifyResp;
       setChannelDID(v.channelDID);
       setUserId(v.userId);
-      if (v.action === "signin") {
-        setStep("signin");
-      } else {
-        setStep("register");
+
+      // Call CerberusGate to determine the next step (per backend/agents/auth/CerberusMFA/readme.md)
+      const cerbRes = await fetch("/api/auth/cerberus-gate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channelDID: v.channelDID,
+          channelType: "email",
+          recipient: email,
+        }),
+      });
+      const cerb = (await cerbRes.json()) as CerberusResp | ErrorResp;
+      if (!cerbRes.ok || isErrorResp(cerb)) {
+        throw new Error(isErrorResp(cerb) ? cerb.error : "Cerberus evaluation failed");
       }
+      const c = cerb as CerberusResp;
+      if (c.userId) setUserId(c.userId);
+      if (c.message) toast.message(c.message);
+      setStep(c.action === "signin" ? "signin" : "register");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to verify";
       toast.error(msg);
@@ -163,14 +225,34 @@ export default function SignInPage() {
   async function onPasskeySignIn() {
     try {
       setWebauthnLoading(true);
-      const res = await fetch("/api/auth/webauthn/login", {
+      if (!userId) throw new Error("Missing userId for WebAuthn login");
+
+      // 1) Begin login -> get options
+      const beginRes = await fetch("/api/auth/webauthn/login/begin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, channelDID }),
+        body: JSON.stringify({ userId }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "WebAuthn sign-in failed");
-      toast.success(data?.message || "Signed in with passkey (stub)");
+      const begin = await beginRes.json();
+      if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey login");
+      const publicKey = decodeRequestOptionsFromServer(begin.options);
+
+      // 2) Call WebAuthn API
+      const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+      if (!cred) throw new Error("No credential returned");
+      const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
+
+      // 3) Finish login -> verify
+      const finishRes = await fetch("/api/auth/webauthn/login/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, challenge: begin.challenge, credentialJSON }),
+      });
+      const finish = await finishRes.json();
+      if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey verification failed");
+
+      toast.success(finish?.message || "Signed in with passkey");
+      setStep("success");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to sign in";
       toast.error(msg);
@@ -354,9 +436,14 @@ export default function SignInPage() {
           )}
 
           {step === "success" && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Success.</p>
-              <p className="text-sm">User ID: {userId}</p>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Success.</p>
+                <p className="text-sm">User ID: {userId}</p>
+              </div>
+              <Button type="button" onClick={onCreatePasskey} disabled={webauthnLoading} className="w-full">
+                {webauthnLoading ? "Working..." : "Add a Passkey (Recommended)"}
+              </Button>
             </div>
           )}
         </CardContent>
