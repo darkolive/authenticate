@@ -174,13 +174,22 @@ func FinishRegistration(req FinishRegistrationRequest) (FinishRegistrationRespon
 	if credID == "" { credID = strings.TrimSpace(payload.ID) }
 	if credID == "" { return FinishRegistrationResponse{Success: false, Message: "invalid credential"}, nil }
 	// Idempotent: ensure not existing, otherwise create and link to user
-	// Check existing
-	q := fmt.Sprintf(`{ c(func: eq(credentialId, %q), first: 1) { uid } }`, credID)
-	if res, _ := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q)); res.Json != "" {
-		var parsed struct{ C []struct{ UID string `json:"uid"` } `json:"c"` }
+	// Check existing without requiring an index on credentialId: list user's credentials and compare in code
+	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(WebAuthnCredential)) { credentialId } } }`, userUID)
+	res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
+	if qerr == nil && res.Json != "" {
+		var parsed struct {
+			U []struct {
+				Creds []struct{ ID string `json:"credentialId"` } `json:"creds"`
+			} `json:"u"`
+		}
 		_ = json.Unmarshal([]byte(res.Json), &parsed)
-		if len(parsed.C) > 0 && parsed.C[0].UID != "" {
-			return FinishRegistrationResponse{Success: true, Message: "credential already registered", CredentialID: credID}, nil
+		if len(parsed.U) > 0 {
+			for _, c := range parsed.U[0].Creds {
+				if strings.TrimSpace(c.ID) == credID {
+					return FinishRegistrationResponse{Success: true, Message: "credential already registered", CredentialID: credID}, nil
+				}
+			}
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -296,10 +305,19 @@ func FinishLogin(req FinishLoginRequest) (FinishLoginResponse, error) {
 	credID := strings.TrimSpace(payload.RawID)
 	if credID == "" { credID = strings.TrimSpace(payload.ID) }
 	if credID == "" { return FinishLoginResponse{Success: false, Message: "invalid credential"}, nil }
-	// Check credential exists
-	q := fmt.Sprintf(`{ c(func: eq(credentialId, %q), first: 1) { uid } }`, credID)
+	// Check credential exists for this user without requiring an index
+	// Fetch user's credentials and compare locally
+	userUID, _ := getUserUIDByDID(req.UserID)
+	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(WebAuthnCredential)) { credentialId } } }`, userUID)
 	res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
 	if err != nil || res.Json == "" { return FinishLoginResponse{Success: false, Message: "credential not found"}, nil }
+	var parsed struct { U []struct { Creds []struct{ ID string `json:"credentialId"` } `json:"creds"` } `json:"u"` }
+	_ = json.Unmarshal([]byte(res.Json), &parsed)
+	found := false
+	if len(parsed.U) > 0 {
+		for _, c := range parsed.U[0].Creds { if strings.TrimSpace(c.ID) == credID { found = true; break } }
+	}
+	if !found { return FinishLoginResponse{Success: false, Message: "credential not found"}, nil }
 
 	// Audit: WebAuthn login finish
 	utcNow := time.Now().UTC()

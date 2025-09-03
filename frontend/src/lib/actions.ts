@@ -111,8 +111,8 @@ async function fetchGraphQL<T>(query: string, variables?: Record<string, unknown
 
 export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
   const query = /* GraphQL */ `
-    query SendOTP($channel: String!, $recipient: String!, $ipAddress: String, $userAgent: String) {
-      sendOTP(req: { channel: $channel, recipient: $recipient, iPAddress: $ipAddress, userAgent: $userAgent }) {
+    query SendOTP($channel: String!, $recipient: String!) {
+      sendOTP(req: { channel: $channel, recipient: $recipient }) {
         otpId: oTPID
         sent
         verified
@@ -126,16 +126,14 @@ export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
   const data = await fetchGraphQL<Data>(query, {
     channel: req.channel,
     recipient: req.recipient,
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
   });
   return data.sendOTP;
 }
 
 export async function verifyOTP(req: VerifyOTPRequest): Promise<VerifyOTPResponse> {
   const query = /* GraphQL */ `
-    query VerifyOTP($otpCode: String!, $recipient: String!, $ipAddress: String, $userAgent: String) {
-      verifyOTP(req: { oTPCode: $otpCode, recipient: $recipient, iPAddress: $ipAddress, userAgent: $userAgent }) {
+    query VerifyOTP($otpCode: String!, $recipient: String!) {
+      verifyOTP(req: { oTPCode: $otpCode, recipient: $recipient }) {
         verified
         message
         userId: userID
@@ -148,8 +146,6 @@ export async function verifyOTP(req: VerifyOTPRequest): Promise<VerifyOTPRespons
   const data = await fetchGraphQL<Data>(query, {
     otpCode: req.otpCode,
     recipient: req.recipient,
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
   });
   return data.verifyOTP;
 }
@@ -268,7 +264,7 @@ export async function beginWebAuthnRegistration(
   req: BeginWebAuthnRegistrationRequest
 ): Promise<BeginWebAuthnRegistrationResponse> {
   const query = /* GraphQL */ `
-    query BeginWebAuthnRegistration($userID: String!, $displayName: String!, $ipAddress: String, $userAgent: String) {
+    query BeginWebAuthnRegistration($userID: String!, $displayName: String!, $ipAddress: String!, $userAgent: String!) {
       beginWebAuthnRegistration(
         req: { userID: $userID, displayName: $displayName, iPAddress: $ipAddress, userAgent: $userAgent }
       ) {
@@ -282,8 +278,8 @@ export async function beginWebAuthnRegistration(
   const data = await fetchGraphQL<Data>(query, {
     userID: req.userId,
     displayName: req.displayName ?? "",
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
   });
   return data.beginWebAuthnRegistration;
 }
@@ -309,7 +305,7 @@ export async function finishWebAuthnRegistration(
       $userID: String!,
       $challenge: String!,
       $credentialJSON: String!,
-      $ipAddress: String, $userAgent: String
+      $ipAddress: String!, $userAgent: String!
     ) {
       finishWebAuthnRegistration(
         req: { userID: $userID, challenge: $challenge, credentialJSON: $credentialJSON, iPAddress: $ipAddress, userAgent: $userAgent }
@@ -325,8 +321,8 @@ export async function finishWebAuthnRegistration(
     userID: req.userId,
     challenge: req.challenge,
     credentialJSON: req.credentialJSON,
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
   });
   return data.finishWebAuthnRegistration;
 }
@@ -346,7 +342,7 @@ export async function beginWebAuthnLogin(
   req: BeginWebAuthnLoginRequest
 ): Promise<BeginWebAuthnLoginResponse> {
   const query = /* GraphQL */ `
-    query BeginWebAuthnLogin($userID: String!, $ipAddress: String, $userAgent: String) {
+    query BeginWebAuthnLogin($userID: String!, $ipAddress: String!, $userAgent: String!) {
       beginWebAuthnLogin(req: { userID: $userID, iPAddress: $ipAddress, userAgent: $userAgent }) {
         optionsJSON
         challenge
@@ -357,8 +353,8 @@ export async function beginWebAuthnLogin(
   type Data = { beginWebAuthnLogin: BeginWebAuthnLoginResponse };
   const data = await fetchGraphQL<Data>(query, {
     userID: req.userId,
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
   });
   return data.beginWebAuthnLogin;
 }
@@ -383,7 +379,7 @@ export async function finishWebAuthnLogin(
       $userID: String!,
       $challenge: String!,
       $credentialJSON: String!,
-      $ipAddress: String, $userAgent: String
+      $ipAddress: String!, $userAgent: String!
     ) {
       finishWebAuthnLogin(
         req: { userID: $userID, challenge: $challenge, credentialJSON: $credentialJSON, iPAddress: $ipAddress, userAgent: $userAgent }
@@ -398,8 +394,8 @@ export async function finishWebAuthnLogin(
     userID: req.userId,
     challenge: req.challenge,
     credentialJSON: req.credentialJSON,
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
   });
   return data.finishWebAuthnLogin;
 }

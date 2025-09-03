@@ -53,10 +53,8 @@ func ensureUserAgentByRaw(rawUA string) (string, error) {
     // Query for existing UserAgent by uaKey
     q := fmt.Sprintf(`{ ua(func: eq(uaKey, %q), first: 1) { uid } }`, key)
     res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
-    if err != nil {
-        return "", fmt.Errorf("userAgent lookup failed: %v", err)
-    }
-    if res.Json != "" {
+    // If lookup succeeds, try to parse and return existing UID
+    if err == nil && res.Json != "" {
         var parsed struct {
             UA []struct{ UID string `json:"uid"` } `json:"ua"`
         }
@@ -67,7 +65,7 @@ func ensureUserAgentByRaw(rawUA string) (string, error) {
         }
     }
     // Create new UserAgent node
-    rawEsc := strings.ReplaceAll(rawUA, "\"", `\\"`)
+    rawEsc := strings.ReplaceAll(rawUA, "\"", `\\\"`)
     nquads := fmt.Sprintf(`_:ua <dgraph.type> "UserAgent" .
 _:ua <uaKey> %q .
 _:ua <raw> %q .
