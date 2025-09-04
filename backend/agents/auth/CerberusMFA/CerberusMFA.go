@@ -72,12 +72,12 @@ func generateChannelDID(channel, recipient string) string {
 // evaluateAvailableMethods checks what MFA methods can be offered for a given user UID
 // Currently supports WebAuthn detection and passwordless fallback.
 func evaluateAvailableMethods(userUID string) (methods []string, err error) {
-    methods = []string{"passwordless"}
+    // New users: passwordless path to complete registration
     if userUID == "" {
-        return methods, nil
+        return []string{"passwordless"}, nil
     }
 
-    // Query whether any WebAuthnCredential exists for this user
+    // Existing users: prefer WebAuthn if any credential exists
     q := fmt.Sprintf(`{
         u(func: uid(%s)) {
             creds: ~user @filter(type(WebAuthnCredential)) { uid }
@@ -86,10 +86,10 @@ func evaluateAvailableMethods(userUID string) (methods []string, err error) {
 
     res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
     if qerr != nil {
-        return methods, fmt.Errorf("webauthn lookup failed: %v", qerr)
+        return []string{"passwordless"}, fmt.Errorf("webauthn lookup failed: %v", qerr)
     }
     if res.Json == "" {
-        return methods, nil
+        return []string{"passwordless"}, nil
     }
     var parsed struct {
         U []struct {
@@ -97,12 +97,13 @@ func evaluateAvailableMethods(userUID string) (methods []string, err error) {
         } `json:"u"`
     }
     if err := json.Unmarshal([]byte(res.Json), &parsed); err != nil {
-        return methods, fmt.Errorf("webauthn lookup parse failed: %v", err)
+        return []string{"passwordless"}, fmt.Errorf("webauthn lookup parse failed: %v", err)
     }
     if len(parsed.U) > 0 && len(parsed.U[0].Creds) > 0 {
-        methods = append([]string{"webauthn"}, methods...)
+        return []string{"webauthn"}, nil
     }
-    return methods, nil
+    // Temporary fallback when user has no passkey yet
+    return []string{"passwordless"}, nil
 }
 
 // updateChannelUsage sets lastUsedAt to now and optionally verified=true for the channel UID
@@ -111,9 +112,9 @@ func updateChannelUsage(channelUID string, setVerified bool) error {
         return nil
     }
     now := time.Now().UTC().Format(time.RFC3339)
-    nquads := fmt.Sprintf(`<%s> <lastUsedAt> %q^^<xs:dateTime> .`, channelUID, now)
+    nquads := fmt.Sprintf(`<%s> <lastUsedAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .`, channelUID, now)
     if setVerified {
-        nquads += fmt.Sprintf("\n<%s> <verified> \"true\"^^<xs:boolean> .", channelUID)
+        nquads += fmt.Sprintf("\n<%s> <verified> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .", channelUID)
     }
     mut := dgraph.NewMutation().WithSetNquads(nquads)
     if _, err := dgraph.ExecuteMutations("dgraph", mut); err != nil {

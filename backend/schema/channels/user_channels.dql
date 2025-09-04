@@ -4,6 +4,7 @@ type UserChannels {
      channelType
      channelHash
      channelKey
+     channelUnique
      verified
      primary
      createdAt
@@ -14,5 +15,7 @@ type UserChannels {
 channelType: string @index(exact) .
 channelHash: string @index(exact) .
 channelKey: string @index(exact) @upsert .  # userId|channelType|channelHash composite
+channelUnique: string @index(exact) @upsert .  # tenantId|channelType|channelHash composite (tenant optional)
 primary: bool @index(bool) .
 lastUsedAt: datetime @index(hour) .
+tenantId: string @index(exact) .

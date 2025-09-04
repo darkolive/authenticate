@@ -8,13 +8,42 @@ export async function POST(req: Request) {
     if (!body?.otpCode || !body?.recipient) {
       return NextResponse.json({ error: "otpCode and recipient are required" }, { status: 400 });
     }
-    const recipient = normalizeRecipient("email", body.recipient);
+    const channelType = "email"; // TODO: infer actual channel type if multiple channels are supported
+    const recipient = normalizeRecipient(channelType, body.recipient);
     const ipAddress = getClientIp(req);
     const userAgent = req.headers.get("user-agent") ?? "";
     const data = await verifyOTP({ otpCode: body.otpCode, recipient, ipAddress, userAgent });
-    return NextResponse.json(data);
+    const res = NextResponse.json(data);
+    // Set secure, HttpOnly channelDID cookie on successful OTP verification
+    if (data?.verified && data?.channelDID) {
+      const secure = process.env.NODE_ENV === "production";
+      res.cookies.set("channelDID", data.channelDID, {
+        httpOnly: true,
+        secure,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 15, // 15 minutes
+      });
+      // Also persist normalized recipient and channel type to support CerberusGate resolution server-side
+      res.cookies.set("authRecipient", recipient, {
+        httpOnly: true,
+        secure,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 15,
+      });
+      res.cookies.set("authChannelType", channelType, {
+        httpOnly: true,
+        secure,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 15,
+      });
+    }
+    return res;
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed to verify OTP";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
+

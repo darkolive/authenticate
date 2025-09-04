@@ -1,6 +1,7 @@
 type WebAuthnCredential {
     user
     credentialId
+    credentialDID
     publicKey
     signCount
     transports
@@ -10,6 +11,7 @@ type WebAuthnCredential {
 
 user: uid @reverse .
 credentialId: string @index(exact) @upsert .
+credentialDID: string @index(exact) @upsert .
 addedAt: datetime @index(hour) .
 publicKey: string .
 signCount: int .

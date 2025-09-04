@@ -5,6 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Safely decode a potentially URL-encoded value (e.g., cookie values)
+export function maybeDecodeURIComponent(value: string | undefined | null): string {
+  try {
+    if (!value) return "";
+    return decodeURIComponent(value);
+  } catch {
+    return String(value ?? "");
+  }
+}
+
 // Normalize an email address for consistent hashing and comparisons
 export function normalizeEmail(value: string): string {
   return (value || "").trim().toLowerCase();

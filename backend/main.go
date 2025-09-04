@@ -5,6 +5,7 @@ import (
 	hecateregister "backend/agents/auth/HecateRegister"
 	cerberus "backend/agents/auth/CerberusMFA"
 	webauthn "backend/agents/auth/WebAuthn"
+	sessions "backend/agents/sessions/ChronosSession"
 	"context"
 )
 
@@ -74,6 +75,26 @@ func CerberusGate(req *cerberus.CerberusMFARequest) cerberus.CerberusMFAResponse
         return cerberus.CerberusMFAResponse{UserExists: false, Action: "register", Message: err.Error(), AvailableMethods: []string{"passwordless"}, NextStep: "Complete user registration"}
     }
     return resp
+}
+
+// ValidateSession verifies a session token using the ChronosSession agent.
+func ValidateSession(req *sessions.ValidationRequest) sessions.ValidationResponse {
+    cs, ierr := sessions.Initialize()
+    if ierr != nil {
+        return sessions.ValidationResponse{Valid: false, Message: ierr.Error()}
+    }
+    // Guard against nil request
+    if req == nil {
+        return sessions.ValidationResponse{Valid: false, Message: "token is required"}
+    }
+    vresp, err := cs.ValidateSession(context.Background(), req)
+    if err != nil {
+        return sessions.ValidationResponse{Valid: false, Message: err.Error()}
+    }
+    if vresp == nil {
+        return sessions.ValidationResponse{Valid: false, Message: "no validation response"}
+    }
+    return *vresp
 }
 
 // BeginWebAuthnRegistration starts WebAuthn credential creation by returning options and a challenge.

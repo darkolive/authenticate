@@ -145,8 +145,8 @@ func Log(p EntryParams) (string, error) {
 	detailsEscaped := strings.ReplaceAll(detailsStr, "\"", `\\"`)
 
 	// Prepare typed timestamps
-	ts := fmt.Sprintf("%q^^<xs:dateTime>", p.Timestamp.Format(time.RFC3339))
-	rd := fmt.Sprintf("%q^^<xs:dateTime>", retentionDate.Format(time.RFC3339))
+	ts := fmt.Sprintf("%q^^<http://www.w3.org/2001/XMLSchema#dateTime>", p.Timestamp.Format(time.RFC3339))
+	rd := fmt.Sprintf("%q^^<http://www.w3.org/2001/XMLSchema#dateTime>", retentionDate.Format(time.RFC3339))
 
 	// Optionally ensure a normalized UserAgent node and capture its UID
 	var uaUID string

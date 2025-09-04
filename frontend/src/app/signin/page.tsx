@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -70,6 +71,7 @@ const registerSchema = z.object({
 type Step = "email" | "otp" | "signin" | "register" | "success";
 
 export default function SignInPage() {
+  const router = useRouter();
   const [step, setStep] = React.useState<Step>("email");
   const [email, setEmail] = React.useState("");
   const [channelDID, setChannelDID] = React.useState<string | undefined>(undefined);
@@ -98,6 +100,95 @@ export default function SignInPage() {
     mode: "onSubmit",
   });
 
+  // --- WebAuthn flows ---
+  async function performWebAuthnLoginFlow(): Promise<boolean> {
+    // Begin login
+    const beginRes = await fetch("/api/auth/webauthn/login/begin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const begin = await beginRes.json();
+    if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey login");
+    const publicKey = decodeRequestOptionsFromServer(begin.options);
+
+    // Get assertion
+    const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+    if (!cred) throw new Error("No credential returned");
+    const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
+
+    // Finish login
+    const finishRes = await fetch("/api/auth/webauthn/login/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge: begin.challenge, credentialJSON, userId: begin.userId }),
+    });
+    const finish = await finishRes.json();
+    if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey verification failed");
+    return true;
+  }
+
+  async function performWebAuthnRegisterFlow(displayName?: string): Promise<boolean> {
+    // Begin registration (server will auto-register user if needed)
+    const beginRes = await fetch("/api/auth/webauthn/register/begin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName }),
+    });
+    const begin = await beginRes.json();
+    if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey registration");
+    const publicKey = decodeCreationOptionsFromServer(begin.options);
+
+    // Create credential
+    const cred = (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
+    if (!cred) throw new Error("No credential returned");
+    const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
+
+    // Finish registration
+    const finishRes = await fetch("/api/auth/webauthn/register/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge: begin.challenge, credentialJSON, userId: begin.userId }),
+    });
+    const finish = await finishRes.json();
+    if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey registration failed");
+    return true;
+  }
+
+  async function attemptPasskeyFlow(action: "signin" | "register", displayName?: string) {
+    try {
+      setWebauthnLoading(true);
+      if (action === "signin") {
+        try {
+          const ok = await performWebAuthnLoginFlow();
+          if (ok) {
+            toast.success("Signed in with passkey");
+            router.push("/dashboard");
+            return;
+          }
+        } catch (e) {
+          // If login fails (no credential or cancelled), try registration as fallback
+          const errMsg = e instanceof Error ? e.message : String(e);
+          console.warn("[webauthn] login failed, falling back to registration", errMsg);
+        }
+      }
+
+      // Registration path (either action === 'register' or login fallback)
+      const registered = await performWebAuthnRegisterFlow(displayName);
+      if (registered) {
+        toast.success("Passkey added to your account");
+        router.push("/dashboard");
+        return;
+      }
+      throw new Error("Passkey flow did not complete");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to complete biometric flow";
+      toast.error(msg);
+    } finally {
+      setWebauthnLoading(false);
+    }
+  }
+
   async function onSendOTP(values: z.infer<typeof emailSchema>) {
     try {
       const res = await fetch("/api/auth/send-otp", {
@@ -118,33 +209,7 @@ export default function SignInPage() {
   async function onCreatePasskey() {
     try {
       setWebauthnLoading(true);
-      if (!userId) throw new Error("Missing userId for passkey registration");
-
-      // 1) Begin registration -> get creation options
-      const beginRes = await fetch("/api/auth/webauthn/register/begin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      const begin = await beginRes.json();
-      if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey registration");
-      const publicKey = decodeCreationOptionsFromServer(begin.options);
-
-      // 2) Create credential
-      const cred = (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
-      if (!cred) throw new Error("No credential returned");
-      const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
-
-      // 3) Finish registration -> store credential
-      const finishRes = await fetch("/api/auth/webauthn/register/finish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, challenge: begin.challenge, credentialJSON }),
-      });
-      const finish = await finishRes.json();
-      if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey registration failed");
-
-      toast.success(finish?.message || "Passkey added to your account");
+      await attemptPasskeyFlow("register");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to create passkey";
       toast.error(msg);
@@ -185,7 +250,8 @@ export default function SignInPage() {
       const c = cerb as CerberusResp;
       if (c.userId) setUserId(c.userId);
       if (c.message) toast.message(c.message);
-      setStep(c.action === "signin" ? "signin" : "register");
+      // Immediately attempt biometric flow based on Cerberus decision
+      await attemptPasskeyFlow(c.action);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to verify";
       toast.error(msg);
@@ -225,34 +291,7 @@ export default function SignInPage() {
   async function onPasskeySignIn() {
     try {
       setWebauthnLoading(true);
-      if (!userId) throw new Error("Missing userId for WebAuthn login");
-
-      // 1) Begin login -> get options
-      const beginRes = await fetch("/api/auth/webauthn/login/begin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      const begin = await beginRes.json();
-      if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey login");
-      const publicKey = decodeRequestOptionsFromServer(begin.options);
-
-      // 2) Call WebAuthn API
-      const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
-      if (!cred) throw new Error("No credential returned");
-      const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
-
-      // 3) Finish login -> verify
-      const finishRes = await fetch("/api/auth/webauthn/login/finish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, challenge: begin.challenge, credentialJSON }),
-      });
-      const finish = await finishRes.json();
-      if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey verification failed");
-
-      toast.success(finish?.message || "Signed in with passkey");
-      setStep("success");
+      await attemptPasskeyFlow("signin");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to sign in";
       toast.error(msg);

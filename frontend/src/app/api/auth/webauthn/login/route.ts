@@ -1,26 +1,39 @@
 import { NextResponse } from "next/server";
-import { beginWebAuthnLogin } from "@/lib/actions";
-import { getClientIp } from "@/lib/utils";
+import { beginWebAuthnLogin, cerberusGate } from "@/lib/actions";
+import { getClientIp, normalizeRecipient, maybeDecodeURIComponent } from "@/lib/utils";
+import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as unknown));
-    const { userId } = (body as { userId?: string }) ?? {};
-
-    // Extract client metadata
     const ipAddress = getClientIp(req);
     const userAgent = req.headers.get("user-agent") ?? "";
-
-    if (!userId) {
-      // We currently require a userId to begin WebAuthn login. If only channelDID was provided,
-      // obtain userId upstream (e.g., via CerberusGate) and retry.
+    // Resolve userId from cookies via CerberusGate
+    const cookieStore = await cookies();
+    const channelDID = cookieStore.get("channelDID")?.value;
+    const recipientRaw = cookieStore.get("authRecipient")?.value;
+    const channelType = cookieStore.get("authChannelType")?.value as "email" | "phone" | undefined;
+    if (!channelDID || !recipientRaw || !channelType) {
       return NextResponse.json(
-        { error: "userId is required to begin WebAuthn login (obtain via CerberusGate or prior step)" },
+        { error: "Missing authentication context. Verify OTP first." },
+        { status: 401 }
+      );
+    }
+    const recipientDecoded = maybeDecodeURIComponent(recipientRaw);
+    const recipient = normalizeRecipient(channelType, recipientDecoded);
+    const gate = await cerberusGate({
+      channelDID,
+      channelType,
+      recipient,
+      ipAddress: ipAddress ?? "",
+      userAgent,
+    });
+    if (!gate?.userId) {
+      return NextResponse.json(
+        { error: "Unable to resolve userId from authentication context" },
         { status: 400 }
       );
     }
-
-    const data = await beginWebAuthnLogin({ userId, ipAddress, userAgent });
+    const data = await beginWebAuthnLogin({ userId: gate.userId, ipAddress, userAgent });
     return NextResponse.json({
       success: true,
       options: JSON.parse(data.optionsJSON),

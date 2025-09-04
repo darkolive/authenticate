@@ -16,3 +16,6 @@ type ChannelOTP {
  channelType: string @index(exact) .
  channelHash: string @index(exact) .
  used: bool @index(bool) .
+ verified: bool @index(bool) .
+ createdAt: datetime @index(hour) .
+ expiresAt: datetime @index(hour) .

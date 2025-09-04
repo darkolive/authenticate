@@ -244,20 +244,26 @@ func (cs *ChronosSession) storeSession(_ context.Context, userID, token string, 
 		_:session <dgraph.type> %q .
 		_:session <userID> %q .
 		_:session <tokenHash> %q .
-		_:session <issuedAt> %q .
-		_:session <expiresAt> %q .
-		_:session <valid> "true"^^<xs:boolean> .
+		_:session <issuedAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+		_:session <expiresAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+		_:session <valid> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
 	`, cs.sessionRecordType, userID, tokenHash, issuedAt.Format(time.RFC3339), expiresAt.Format(time.RFC3339))
 	
-	// Add optional fields if present
+	// Add optional fields if present (ensure newline separators between triples)
 	if req.DeviceInfo != "" {
-		nquads += fmt.Sprintf(`_:session <deviceInfo> %q .`, req.DeviceInfo)
+		nquads += fmt.Sprintf("\n_:session <deviceInfo> %q .", req.DeviceInfo)
 	}
 	if req.IPAddress != "" {
-		nquads += fmt.Sprintf(`_:session <ipAddress> %q .`, req.IPAddress)
+		// Create an IPAddress node and link it (schema expects uid for ipAddress)
+		nquads += fmt.Sprintf("\n_:ip <dgraph.type> \"IPAddress\" .")
+		nquads += fmt.Sprintf("\n_:ip <address> %q .", req.IPAddress)
+		nquads += "\n_:session <ipAddress> _:ip ."
 	}
 	if req.UserAgent != "" {
-		nquads += fmt.Sprintf(`_:session <userAgent> %q .`, req.UserAgent)
+		// Create a UserAgent node and link it (schema expects uid for userAgent)
+		nquads += fmt.Sprintf("\n_:ua <dgraph.type> \"UserAgent\" .")
+		nquads += fmt.Sprintf("\n_:ua <raw> %q .", req.UserAgent)
+		nquads += "\n_:session <userAgent> _:ua ."
 	}
 	
 	// Create mutation
@@ -381,7 +387,7 @@ func (cs *ChronosSession) updateLastUsed(_ context.Context, token string) error 
 	
 	// Update lastUsed timestamp
 	nquads := fmt.Sprintf(`
-		<%s> <lastUsed> %q .
+		<%s> <lastUsed> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 	`, uid, now.Format(time.RFC3339))
 	
 	// Create mutation
@@ -434,7 +440,7 @@ func (cs *ChronosSession) invalidateToken(_ context.Context, token string) error
 	
 	// Mark session as invalid
 	nquads := fmt.Sprintf(`
-		<%s> <valid> "false"^^<xs:boolean> .
+		<%s> <valid> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
 	`, uid)
 	
 	// Create mutation

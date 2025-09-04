@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"net"
 	"time"
+	"strings"
 
 	"backend/agents/audit"
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
@@ -86,6 +87,19 @@ func generateUserID() string {
 func hashString(input string) string {
 	sum := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(sum[:])
+}
+
+// normalizeRecipient mirrors CerberusMFA/CharonOTP normalization
+// - Emails: lowercase + trim
+// - Others: trim
+func normalizeRecipient(channelType, recipient string) string {
+    if recipient == "" {
+        return ""
+    }
+    if strings.ToLower(channelType) == "email" {
+        return strings.ToLower(strings.TrimSpace(recipient))
+    }
+    return strings.TrimSpace(recipient)
 }
 
 // makeChannelKey creates a unique composite key for UserChannels
@@ -245,16 +259,18 @@ func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []s
 	}
 
 	now := time.Now()
-	chHash := hashString(req.Recipient)
+	normRecipient := normalizeRecipient(req.ChannelType, req.Recipient)
+	chHash := hashString(normRecipient)
 	chKey := makeChannelKey(userID, req.ChannelType, chHash)
+	chUnique := fmt.Sprintf("%s|%s", req.ChannelType, chHash)
 
 	// Build N-Quads for User and UserChannels aligned with schema
 	nquads := fmt.Sprintf(`
 		_:user <dgraph.type> "User" .
 		_:user <did> %q .
 		_:user <status> "active" .
-		_:user <createdAt> "%s"^^<xs:dateTime> .
-		_:user <updatedAt> "%s"^^<xs:dateTime> .
+		_:user <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+		_:user <updatedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 
 		_:channel <dgraph.type> "UserChannels" .
 		_:channel <user> _:user .
@@ -262,10 +278,11 @@ func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []s
 		_:channel <channelType> %q .
 		_:channel <channelHash> %q .
 		_:channel <channelKey> %q .
-		_:channel <verified> "true"^^<xs:boolean> .
-		_:channel <primary> "true"^^<xs:boolean> .
-		_:channel <createdAt> "%s"^^<xs:dateTime> .
-		_:channel <lastUsedAt> "%s"^^<xs:dateTime> .
+		_:channel <channelUnique> %q .
+		_:channel <verified> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+		_:channel <primary> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+		_:channel <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+		_:channel <lastUsedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 	`,
 		userID,
 		now.Format(time.RFC3339),
@@ -274,6 +291,7 @@ func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []s
 		req.ChannelType,
 		chHash,
 		chKey,
+		chUnique,
 		now.Format(time.RFC3339),
 		now.Format(time.RFC3339),
 	)

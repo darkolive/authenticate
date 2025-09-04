@@ -1,14 +1,18 @@
 package WebAuthn
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"backend/agents/audit"
+	sessions "backend/agents/sessions/ChronosSession"
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
@@ -39,6 +43,9 @@ type FinishRegistrationResponse struct {
 	Success      bool   `json:"success"`
 	Message      string `json:"message"`
 	CredentialID string `json:"credentialId,omitempty"`
+	// New: session issuance on successful registration
+	SessionToken      string `json:"sessionToken,omitempty"`
+	SessionExpiresAt  string `json:"sessionExpiresAt,omitempty"`
 }
 
 type BeginLoginRequest struct {
@@ -64,6 +71,9 @@ type FinishLoginRequest struct {
 type FinishLoginResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	// New: session issuance on successful login
+	SessionToken     string `json:"sessionToken,omitempty"`
+	SessionExpiresAt string `json:"sessionExpiresAt,omitempty"`
 }
 
 // Helpers
@@ -102,8 +112,8 @@ func saveChallenge(challenge, userID, typ string, ttlMinutes int) (string, error
 _:c <challenge> %q .
 _:c <userId> %q .
 _:c <type> %q .
-_:c <createdAt> %q^^<xs:dateTime> .
-_:c <expiresAt> %q^^<xs:dateTime> .`, challenge, userID, typ, now.Format(time.RFC3339), expires.Format(time.RFC3339))
+_:c <createdAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+_:c <expiresAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .`, challenge, userID, typ, now.Format(time.RFC3339), expires.Format(time.RFC3339))
 	mu := dgraph.NewMutation().WithSetNquads(nquads)
 	if _, err := dgraph.ExecuteMutations("dgraph", mu); err != nil {
 		return "", err
@@ -187,7 +197,20 @@ func FinishRegistration(req FinishRegistrationRequest) (FinishRegistrationRespon
 		if len(parsed.U) > 0 {
 			for _, c := range parsed.U[0].Creds {
 				if strings.TrimSpace(c.ID) == credID {
-					return FinishRegistrationResponse{Success: true, Message: "credential already registered", CredentialID: credID}, nil
+					// Issue a session even if credential already exists (idempotent behavior)
+					var token, expStr string
+					if cs, ierr := sessions.Initialize(); ierr == nil {
+						if sresp, serr := cs.IssueSession(context.Background(), &sessions.SessionRequest{
+							UserID:    req.UserID,
+							AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_WEBAUTHN, "method": sessions.SESSION_TYPE_WEBAUTHN},
+							IPAddress: req.IPAddress,
+							UserAgent: req.UserAgent,
+						}); serr == nil {
+							token = sresp.Token
+							expStr = sresp.ExpiresAt.Format(time.RFC3339)
+						}
+					}
+					return FinishRegistrationResponse{Success: true, Message: "credential already registered", CredentialID: credID, SessionToken: token, SessionExpiresAt: expStr}, nil
 				}
 			}
 		}
@@ -195,8 +218,8 @@ func FinishRegistration(req FinishRegistrationRequest) (FinishRegistrationRespon
 	now := time.Now().UTC().Format(time.RFC3339)
 	nq := fmt.Sprintf(`_:k <dgraph.type> "WebAuthnCredential" .
 _:k <credentialId> %q .
-_:k <signCount> "0"^^<xs:int> .
-_:k <addedAt> %q^^<xs:dateTime> .
+_:k <signCount> "0"^^<http://www.w3.org/2001/XMLSchema#int> .
+_:k <addedAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 _:k <user> <%s> .`, credID, now, userUID)
 	var transports string
 	if strings.Contains(req.CredentialJSON, "transports") {
@@ -205,9 +228,28 @@ _:k <user> <%s> .`, credID, now, userUID)
 		transports = strings.Join(cred.Transports, ",")
 	}
 	if transports != "" { nq += "\n_:k <transports> \"" + transports + "\" ." }
+	// Persist credentialDID: sha256("webauthn:" + userID + ":" + credentialId) in hex
+	seed := "webauthn:" + req.UserID + ":" + credID
+	sum := sha256.Sum256([]byte(seed))
+	credDID := hex.EncodeToString(sum[:])
+	nq += fmt.Sprintf("\n_:k <credentialDID> %q .", credDID)
 	mu := dgraph.NewMutation().WithSetNquads(nq)
 	if _, err := dgraph.ExecuteMutations("dgraph", mu); err != nil {
 		return FinishRegistrationResponse{Success: false, Message: fmt.Sprintf("store failed: %v", err)}, nil
+	}
+
+	// Attempt to issue a session on successful registration
+	var sessionToken, sessionExp string
+	if cs, ierr := sessions.Initialize(); ierr == nil {
+		if sresp, serr := cs.IssueSession(context.Background(), &sessions.SessionRequest{
+			UserID:    req.UserID,
+			AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_WEBAUTHN, "method": sessions.SESSION_TYPE_WEBAUTHN},
+			IPAddress: req.IPAddress,
+			UserAgent: req.UserAgent,
+		}); serr == nil {
+			sessionToken = sresp.Token
+			sessionExp = sresp.ExpiresAt.Format(time.RFC3339)
+		}
 	}
 
 	// Audit: WebAuthn registration finish
@@ -235,7 +277,7 @@ _:k <user> <%s> .`, credID, now, userUID)
 		Timestamp:    utcNow,
 	})
 
-	return FinishRegistrationResponse{Success: true, Message: "registered", CredentialID: credID}, nil
+	return FinishRegistrationResponse{Success: true, Message: "registered", CredentialID: credID, SessionToken: sessionToken, SessionExpiresAt: sessionExp}, nil
 }
 
 // BeginLogin returns publicKeyCredentialRequestOptions JSON and persists a challenge
@@ -319,6 +361,20 @@ func FinishLogin(req FinishLoginRequest) (FinishLoginResponse, error) {
 	}
 	if !found { return FinishLoginResponse{Success: false, Message: "credential not found"}, nil }
 
+	// Attempt to issue a session on successful login
+	var sessionToken, sessionExp string
+	if cs, ierr := sessions.Initialize(); ierr == nil {
+		if sresp, serr := cs.IssueSession(context.Background(), &sessions.SessionRequest{
+			UserID:    req.UserID,
+			AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_WEBAUTHN, "method": sessions.SESSION_TYPE_WEBAUTHN},
+			IPAddress: req.IPAddress,
+			UserAgent: req.UserAgent,
+		}); serr == nil {
+			sessionToken = sresp.Token
+			sessionExp = sresp.ExpiresAt.Format(time.RFC3339)
+		}
+	}
+
 	// Audit: WebAuthn login finish
 	utcNow := time.Now().UTC()
 	tzName := "UTC"
@@ -344,7 +400,7 @@ func FinishLogin(req FinishLoginRequest) (FinishLoginResponse, error) {
 		Timestamp:    utcNow,
 	})
 
-	return FinishLoginResponse{Success: true, Message: "authenticated (verification TODO)"}, nil
+	return FinishLoginResponse{Success: true, Message: "authenticated (verification TODO)", SessionToken: sessionToken, SessionExpiresAt: sessionExp}, nil
 }
 
 func firstNonEmpty(vals ...string) string { for _, v := range vals { if strings.TrimSpace(v) != "" { return v } } ; return "" }

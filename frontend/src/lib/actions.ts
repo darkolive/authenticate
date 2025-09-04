@@ -295,6 +295,8 @@ export type FinishWebAuthnRegistrationResponse = {
   success: boolean;
   message: string;
   credentialId?: string;
+  sessionToken?: string;
+  sessionExpiresAt?: string;
 };
 
 export async function finishWebAuthnRegistration(
@@ -313,6 +315,8 @@ export async function finishWebAuthnRegistration(
         success
         message
         credentialId: credentialID
+        sessionToken
+        sessionExpiresAt
       }
     }
   `;
@@ -369,6 +373,8 @@ export type FinishWebAuthnLoginRequest = {
 export type FinishWebAuthnLoginResponse = {
   success: boolean;
   message: string;
+  sessionToken?: string;
+  sessionExpiresAt?: string;
 };
 
 export async function finishWebAuthnLogin(
@@ -386,6 +392,8 @@ export async function finishWebAuthnLogin(
       ) {
         success
         message
+        sessionToken
+        sessionExpiresAt
       }
     }
   `;
@@ -398,4 +406,28 @@ export async function finishWebAuthnLogin(
     userAgent: req.userAgent ?? "",
   });
   return data.finishWebAuthnLogin;
+}
+
+// Session validation
+export type ValidateSessionResponse = {
+  valid: boolean;
+  userId?: string;
+  expiresAt?: string;
+  message?: string;
+};
+
+export async function validateSession(token: string): Promise<ValidateSessionResponse> {
+  const query = /* GraphQL */ `
+    query ValidateSession($token: String!) {
+      validateSession(req: { token: $token }) {
+        valid
+        userId: userID
+        expiresAt
+        message
+      }
+    }
+  `;
+  type Data = { validateSession: ValidateSessionResponse };
+  const data = await fetchGraphQL<Data>(query, { token });
+  return data.validateSession;
 }

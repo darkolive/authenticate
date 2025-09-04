@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"math/big"
 	"time"
 
@@ -21,6 +22,71 @@ import (
 type OTPRequest struct {
 	Channel   string `json:"channel"`   // "email", "sms", "whatsapp", "telegram"
 	Recipient string `json:"recipient"` // email, phone number, etc.
+}
+
+// PurgeExpiredOTPs deletes ChannelOTP records that are expired, or verified/used
+// beyond a retention window. Returns the number of records deleted.
+// retentionHours <= 0 defaults to 24 hours.
+func PurgeExpiredOTPs(retentionHours int) (int, error) {
+    if retentionHours <= 0 {
+        retentionHours = 24
+    }
+
+    cutoff := time.Now().Add(-time.Duration(retentionHours) * time.Hour).UTC()
+    cutoffStr := cutoff.Format(time.RFC3339)
+
+    // Select OTPs where:
+    // - expiresAt < cutoff (expired long enough), OR
+    // - verified == true AND createdAt < cutoff, OR
+    // - used == true AND createdAt < cutoff
+    query := fmt.Sprintf(`{
+        q(func: type(ChannelOTP)) @filter( lt(expiresAt, "%s") OR (eq(verified, true) AND lt(createdAt, "%s")) OR (eq(used, true) AND lt(createdAt, "%s")) ) {
+            uid
+        }
+    }`, cutoffStr, cutoffStr, cutoffStr)
+
+    result, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(query))
+    if err != nil {
+        return 0, fmt.Errorf("failed to query OTPs for purge: %w", err)
+    }
+    if result.Json == "" {
+        return 0, nil
+    }
+
+    var resp struct {
+        Q []struct{ UID string `json:"uid"` } `json:"q"`
+    }
+    if err := json.Unmarshal([]byte(result.Json), &resp); err != nil {
+        return 0, fmt.Errorf("failed to parse purge query response: %w", err)
+    }
+    if len(resp.Q) == 0 {
+        return 0, nil
+    }
+
+    var delNQuads strings.Builder
+    for _, n := range resp.Q {
+        if n.UID == "" {
+            continue
+        }
+        fmt.Fprintf(&delNQuads, "<%s> * * .\n", n.UID)
+    }
+    if delNQuads.Len() == 0 {
+        return 0, nil
+    }
+
+    if err := executeDelete(delNQuads.String()); err != nil {
+        return 0, err
+    }
+
+    // Audit and log the purge event
+    deleted := len(resp.Q)
+    logAudit("AUTHENTICATION", "OTP_PURGED", "ChannelOTP", "bulk", "INFO", map[string]interface{}{
+        "deletedCount":  deleted,
+        "retentionHours": retentionHours,
+        "cutoff":        cutoffStr,
+    })
+    console.Log(fmt.Sprintf("🧹 Purged %d ChannelOTP records (cutoff %s)", deleted, cutoffStr))
+    return deleted, nil
 }
 
 // OTPResponse represents the response after OTP generation
@@ -80,6 +146,19 @@ func hashString(input string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// normalizeRecipient mirrors CerberusMFA normalization to ensure consistent hashing
+// - Emails: lowercased and trimmed
+// - Others (sms/phone/etc.): trimmed
+func normalizeRecipient(channel, recipient string) string {
+    if recipient == "" {
+        return ""
+    }
+    if strings.ToLower(channel) == "email" {
+        return strings.ToLower(strings.TrimSpace(recipient))
+    }
+    return strings.TrimSpace(recipient)
+}
+
 // logAudit is a thin wrapper using the shared audit helper
 func logAudit(category, action, objectType, objectId, severity string, details map[string]interface{}) {
     _, err := audit.Log(audit.EntryParams{
@@ -108,6 +187,16 @@ func executeMutation(nquads string) error {
 	return nil
 }
 
+// executeDelete executes a DQL delete mutation using Dgraph SDK
+func executeDelete(nquads string) error {
+	mutationObj := dgraph.NewMutation().WithDelNquads(nquads)
+	_, err := dgraph.ExecuteMutations("dgraph", mutationObj)
+	if err != nil {
+		return fmt.Errorf("failed to execute delete mutation: %w", err)
+	}
+	return nil
+}
+
 // storeOTPInDgraph stores the OTP record in Dgraph using Modus SDK best practices
 func storeOTPInDgraph(channel, recipient, otpCode string, expiresAt time.Time) (string, error) {
 	// Use Modus SDK console for structured logging
@@ -116,7 +205,8 @@ func storeOTPInDgraph(channel, recipient, otpCode string, expiresAt time.Time) (
 	start := time.Now()
 	
 	// Hash sensitive data for privacy (ISO 27001 compliance)
-	channelHash := hashString(recipient)
+	normRecipient := normalizeRecipient(channel, recipient)
+	channelHash := hashString(normRecipient)
 	otpHash := hashString(otpCode)
 	
 	// Generate temporary OTP ID for immediate response
@@ -126,11 +216,12 @@ func storeOTPInDgraph(channel, recipient, otpCode string, expiresAt time.Time) (
 	nquads := fmt.Sprintf(`_:channelotp <channelHash> "%s" .
 _:channelotp <channelType> "%s" .
 _:channelotp <otpHash> "%s" .
-_:channelotp <verified> "false"^^<xs:boolean> .
-_:channelotp <expiresAt> "%s"^^<xs:dateTime> .
-_:channelotp <used> "false"^^<xs:boolean> .
+_:channelotp <verified> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+_:channelotp <expiresAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+_:channelotp <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+_:channelotp <used> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
 _:channelotp <dgraph.type> "ChannelOTP" .`,
-		channelHash, channel, otpHash, expiresAt.Format(time.RFC3339))
+		channelHash, channel, otpHash, expiresAt.Format(time.RFC3339), start.Format(time.RFC3339))
 	
 	// Execute mutation using proven Modus SDK pattern
 	mutationObj := dgraph.NewMutation().WithSetNquads(nquads)
@@ -287,16 +378,26 @@ func SendOTP(ctx context.Context, req OTPRequest) (OTPResponse, error) {
 func VerifyOTP(req VerifyOTPRequest) (VerifyOTPResponse, error) {
 	ctx := context.Background()
 	
-	// Hash the provided channel and OTP for database comparison
-	channelHash := hashString(req.Recipient)
+	// Compute recipient hashes (raw and normalized-email) and OTP hash
+	rawRecipient := strings.TrimSpace(req.Recipient)
+	rawHash := hashString(rawRecipient)
+	// If it looks like an email, also try a normalized (lowercased) variant
+	normEmail := strings.ToLower(rawRecipient)
+	var hashFilter string
+	if strings.Contains(rawRecipient, "@") && normEmail != rawRecipient {
+		normHash := hashString(normEmail)
+		hashFilter = fmt.Sprintf("(eq(channelHash, %q) OR eq(channelHash, %q))", rawHash, normHash)
+	} else {
+		hashFilter = fmt.Sprintf("eq(channelHash, %q)", rawHash)
+	}
 	otpHash := hashString(req.OTPCode)
 	
 	// Debug: console.Log(fmt.Sprintf("🔍 Verifying OTP: channel=%s, code=%s", req.Recipient, req.OTPCode))
 	// Debug: console.Log(fmt.Sprintf("🔍 Hashes: channelHash=%s, otpHash=%s", channelHash, otpHash))
 	
-	// Query Dgraph to find matching OTP record using proper Modus SDK
+	// Query Dgraph to find matching OTP record; allow raw or normalized email channelHash
 	query := fmt.Sprintf(`{
-		otp_verification(func: eq(channelHash, "%s")) @filter(eq(otpHash, "%s") AND eq(verified, false) AND eq(used, false)) {
+		otp_verification(func: type(ChannelOTP)) @filter(%s AND eq(otpHash, %q) AND eq(verified, false) AND eq(used, false)) {
 			uid
 			channelHash
 			otpHash
@@ -307,7 +408,7 @@ func VerifyOTP(req VerifyOTPRequest) (VerifyOTPResponse, error) {
 			purpose
 			channelType
 		}
-	}`, channelHash, otpHash)
+	}`, hashFilter, otpHash)
 	
 	// Debug: console.Log(fmt.Sprintf("🔍 DQL Query: %s", query))
 	
@@ -401,8 +502,8 @@ func VerifyOTP(req VerifyOTPRequest) (VerifyOTPResponse, error) {
 func markOTPAsVerifiedAndUsed(_ context.Context, otpUID string) error {
 	// Create DQL mutation to mark OTP as verified and used
 	nquads := fmt.Sprintf(`
-		<%s> <verified> "true"^^<xs:boolean> .
-		<%s> <used> "true"^^<xs:boolean> .
+		<%s> <verified> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+		<%s> <used> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
 	`, otpUID, otpUID)
 
 	// Use direct HTTP mutation to avoid v25 SDK compatibility issues
@@ -422,13 +523,15 @@ func markOTPAsVerifiedAndUsed(_ context.Context, otpUID string) error {
 func generateChannelDID(channel, recipient string) string {
 	// Create a unique identifier based on channel type and recipient
 	// This ensures each email/phone has a unique DID across the system
-	return hashString(fmt.Sprintf("%s:%s", channel, recipient))
+	norm := normalizeRecipient(channel, recipient)
+	return hashString(fmt.Sprintf("%s:%s", channel, norm))
 }
 
 // checkUserExists checks if a user exists by channel DID
 func checkUserExists(recipient, channelType string) (bool, string, error) {
-	// Compute channelHash used in UserChannels
-	chHash := hashString(recipient)
+	// Compute channelHash used in UserChannels (normalized)
+	normRecipient := normalizeRecipient(channelType, recipient)
+	chHash := hashString(normRecipient)
 
 	// Query UserChannels by channelType + channelHash and follow edge to User
 	query := fmt.Sprintf(`{
