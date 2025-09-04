@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       userAgent,
     });
     let resolvedUserId = gate?.userId;
+    let didAutoRegister = false;
     if (!resolvedUserId) {
       // If CerberusGate indicates this is a registration flow, lazily create the user so passkey registration can proceed.
       // This supports the passkey-first UX after OTP verification.
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
           );
         }
         resolvedUserId = reg.userId;
+        didAutoRegister = true;
       } else {
         return NextResponse.json(
           { error: "Unable to resolve user. Complete user registration first." },
@@ -79,13 +81,25 @@ export async function POST(req: Request) {
       ipAddress,
       userAgent,
     });
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       options: JSON.parse(data.optionsJSON),
       challenge: data.challenge,
       expiresAt: data.expiresAt,
       userId: resolvedUserId,
     });
+    if (didAutoRegister) {
+      // Mark that the user needs to complete onboarding before accessing dashboard
+      const secure = process.env.NODE_ENV === "production";
+      res.cookies.set("needs_onboarding", "true", {
+        httpOnly: true,
+        secure,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24, // 1 day
+      });
+    }
+    return res;
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed to begin WebAuthn registration";
     return NextResponse.json({ error: message }, { status: 400 });

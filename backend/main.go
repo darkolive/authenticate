@@ -6,6 +6,7 @@ import (
 	cerberus "backend/agents/auth/CerberusMFA"
 	webauthn "backend/agents/auth/WebAuthn"
 	sessions "backend/agents/sessions/ChronosSession"
+	profile "backend/agents/users/Profile"
 	"context"
 )
 
@@ -22,6 +23,40 @@ func SendOTP(req *charonotp.OTPRequest) charonotp.OTPResponse {
     resp, err := charonotp.SendOTP(context.Background(), *req)
     if err != nil {
         return charonotp.OTPResponse{Verified: false, Message: err.Error(), Channel: req.Channel}
+    }
+    return resp
+}
+
+// UpdateUserProfile persists basic profile fields (name/displayName) for the user.
+func UpdateUserProfile(req *profile.UpdateProfileRequest) profile.UpdateProfileResponse {
+    if req == nil {
+        r := profile.UpdateProfileRequest{}
+        resp, err := profile.UpdateUserProfile(context.Background(), r)
+        if err != nil {
+            return profile.UpdateProfileResponse{Success: false, Message: err.Error()}
+        }
+        return resp
+    }
+    resp, err := profile.UpdateUserProfile(context.Background(), *req)
+    if err != nil {
+        return profile.UpdateProfileResponse{Success: false, Message: err.Error()}
+    }
+    return resp
+}
+
+// IsProfileComplete returns whether the user's profile has the minimum required fields.
+func IsProfileComplete(req *profile.ProfileCompleteRequest) profile.ProfileCompleteResponse {
+    if req == nil {
+        r := profile.ProfileCompleteRequest{}
+        resp, err := profile.IsProfileComplete(r)
+        if err != nil {
+            return profile.ProfileCompleteResponse{Complete: false, Message: err.Error()}
+        }
+        return resp
+    }
+    resp, err := profile.IsProfileComplete(*req)
+    if err != nil {
+        return profile.ProfileCompleteResponse{Complete: false, Message: err.Error()}
     }
     return resp
 }

@@ -177,7 +177,8 @@ export default function SignInPage() {
       const registered = await performWebAuthnRegisterFlow(displayName);
       if (registered) {
         toast.success("Passkey added to your account");
-        router.push("/dashboard");
+        // After creating a new passkey (usually for new users), send them to onboarding to complete profile details.
+        router.push("/onboarding");
         return;
       }
       throw new Error("Passkey flow did not complete");

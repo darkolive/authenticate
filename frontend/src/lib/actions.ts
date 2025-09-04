@@ -431,3 +431,86 @@ export async function validateSession(token: string): Promise<ValidateSessionRes
   const data = await fetchGraphQL<Data>(query, { token });
   return data.validateSession;
 }
+
+// Profile management
+export type UpdateUserProfileRequest = {
+  userId: string;
+  firstName?: string;
+  lastName?: string;
+  displayName?: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
+
+export type UpdateUserProfileResponse = {
+  success: boolean;
+  message?: string;
+  userId?: string;
+  updatedAt?: string;
+};
+
+export async function updateUserProfile(
+  req: UpdateUserProfileRequest
+): Promise<UpdateUserProfileResponse> {
+  const query = /* GraphQL */ `
+    query UpdateUserProfile(
+      $userID: String!,
+      $firstName: String!,
+      $lastName: String!,
+      $displayName: String!,
+      $ipAddress: String!,
+      $userAgent: String!
+    ) {
+      updateUserProfile(
+        req: {
+          userID: $userID,
+          firstName: $firstName,
+          lastName: $lastName,
+          displayName: $displayName,
+          iPAddress: $ipAddress,
+          userAgent: $userAgent
+        }
+      ) {
+        success
+        message
+        userId: userID
+        updatedAt
+      }
+    }
+  `;
+  type Data = { updateUserProfile: UpdateUserProfileResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    firstName: req.firstName ?? "",
+    lastName: req.lastName ?? "",
+    displayName: req.displayName ?? "",
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
+  });
+  return data.updateUserProfile;
+}
+
+export type ProfileCompleteResponse = {
+  complete: boolean;
+  hasDisplayName: boolean;
+  hasName: boolean;
+  status?: string;
+  message?: string;
+};
+
+export async function isProfileComplete(userId: string): Promise<ProfileCompleteResponse> {
+  const query = /* GraphQL */ `
+    query IsProfileComplete($userID: String!) {
+      isProfileComplete(req: { userID: $userID }) {
+        complete
+        hasDisplayName
+        hasName
+        status
+        message
+      }
+    }
+  `;
+  type Data = { isProfileComplete: ProfileCompleteResponse };
+  const data = await fetchGraphQL<Data>(query, { userID: userId });
+  return data.isProfileComplete;
+}

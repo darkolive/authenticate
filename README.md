@@ -46,3 +46,31 @@ Environment variables:
 
 - Audit logging follows a privacy-balanced approach (masked IP hashed to `ipHash`, normalized `UserAgent` linkage).
 - See `backend/agents/` for agents like `HecateRegister`, `CharonOTP`, and `ChronosSession`.
+
+## Audit: PROFILE_UPDATED
+
+Profile updates now emit an audit event for compliance and traceability.
+
+- Category: `PROFILE`
+- Action: `PROFILE_UPDATED`
+- ObjectType: `User`
+- ObjectId: User DID (same as `userId` in the app)
+- Details: JSON containing `updatedFields` (array), `before`/`after` flags (`hasDisplayName`, `hasName`, `complete`), and `updatedAt`.
+- IP/UserAgent: Stored as `ipHash` (privacy-preserving hash) and a link to a normalized `UserAgent` node.
+
+### Verify recent PROFILE_UPDATED entries
+
+Use the helper script to fetch recent audit entries for a given user:
+
+```
+cd backend/schema
+./query_audit_profile_updates.sh <USER_ID> [LIMIT]
+# e.g.
+./query_audit_profile_updates.sh did:example:123 10
+```
+
+Environment:
+
+- `DGRAPH_URL` (defaults to `http://localhost:8080`)
+
+This script issues a Dgraph query filtered by `category == PROFILE`, `action == PROFILE_UPDATED`, and `objectId == <USER_ID>`, ordered by `timestamp` desc.
