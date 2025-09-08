@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { beginWebAuthnLogin, cerberusGate } from "@/lib/actions";
-import { getClientIp, normalizeRecipient, maybeDecodeURIComponent } from "@/lib/utils";
+import { beginjanusfaceLogin, cerberusGate } from "@/lib/actions";
+import {
+  getClientIp,
+  normalizeRecipient,
+  maybeDecodeURIComponent,
+} from "@/lib/utils";
 import { cookies } from "next/headers";
 import { createHash } from "crypto";
 
@@ -13,15 +17,19 @@ export async function POST(req: Request) {
       recipient?: string;
     };
     const cookieStore = await cookies();
-    const channelType = (body.channelType || cookieStore.get("authChannelType")?.value || "") as
-      | "email"
-      | "phone";
-    const recipientRaw = body.recipient || cookieStore.get("authRecipient")?.value || "";
+    const channelType = (body.channelType ||
+      cookieStore.get("authChannelType")?.value ||
+      "") as "email" | "phone";
+    const recipientRaw =
+      body.recipient || cookieStore.get("authRecipient")?.value || "";
     const recipientDecoded = maybeDecodeURIComponent(recipientRaw);
     const recipient = normalizeRecipient(channelType, recipientDecoded);
-    let channelDID = body.channelDID || cookieStore.get("channelDID")?.value || "";
+    let channelDID =
+      body.channelDID || cookieStore.get("channelDID")?.value || "";
     if (!channelDID && channelType && recipient) {
-      channelDID = createHash("sha256").update(`${channelType}:${recipient}`).digest("hex");
+      channelDID = createHash("sha256")
+        .update(`${channelType}:${recipient}`)
+        .digest("hex");
     }
     if (!channelDID || !recipient || !channelType) {
       return NextResponse.json(
@@ -45,7 +53,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const data = await beginWebAuthnLogin({ userId: gate.userId, ipAddress, userAgent });
+    const data = await beginjanusfaceLogin({
+      userId: gate.userId,
+      ipAddress,
+      userAgent,
+    });
     return NextResponse.json({
       success: true,
       options: JSON.parse(data.optionsJSON),
@@ -54,7 +66,8 @@ export async function POST(req: Request) {
       userId: gate.userId,
     });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Failed to begin WebAuthn login";
+    const message =
+      e instanceof Error ? e.message : "Failed to begin janusface login";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

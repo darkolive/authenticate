@@ -60,8 +60,8 @@ The app exposes typed API routes that proxy to the backend or serve stubs:
 
 Stubbed placeholders (UI wired, backend integration pending):
 
-- POST `/api/auth/webauthn/login` → Passkey sign-in stub
-- POST `/api/auth/webauthn/register` → Passkey registration stub
+- POST `/api/auth/janusface/login` → Passkey sign-in stub
+- POST `/api/auth/janusface/register` → Passkey registration stub
 - POST `/api/auth/passwordless/send-magic-link` → Magic link stub
 
 ### Sign-in flow
@@ -70,5 +70,5 @@ Navigate to `/signin`:
 
 1. Enter email → send OTP
 2. Enter OTP → verify
-3. If existing user → WebAuthn or magic link (stubs)
+3. If existing user → janusface or magic link (stubs)
 4. If new user → complete registration → success

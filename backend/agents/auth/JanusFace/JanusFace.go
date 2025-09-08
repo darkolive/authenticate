@@ -1,4 +1,4 @@
-package WebAuthn
+package JanusFace
 
 import (
 	"context"
@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"backend/agents/audit"
+	audit "backend/agents/audit/ThemisLog"
 	sessions "backend/agents/sessions/ChronosSession"
+
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
@@ -108,7 +109,7 @@ func getUserUIDByDID(userDID string) (string, error) {
 func saveChallenge(challenge, userID, typ string, ttlMinutes int) (string, error) {
 	now := time.Now().UTC()
 	expires := now.Add(time.Duration(ttlMinutes) * time.Minute)
-	nquads := fmt.Sprintf(`_:c <dgraph.type> "WebAuthnChallenge" .
+	nquads := fmt.Sprintf(`_:c <dgraph.type> "janusfaceChallenge" .
 _:c <challenge> %q .
 _:c <userId> %q .
 _:c <type> %q .
@@ -141,18 +142,18 @@ func BeginRegistration(req BeginRegistrationRequest) (BeginRegistrationResponse,
 	exp, err := saveChallenge(ch, req.UserID, "registration", 10)
 	if err != nil { return BeginRegistrationResponse{}, err }
 
-	// Audit: WebAuthn registration begin
+	// Audit: janusface registration begin
 	utcNow := time.Now().UTC()
 	tzName := "UTC"
 	localNow := utcNow
 	offsetMinutes := 0
 	_, _ = audit.Log(audit.EntryParams{
 		Category:    "AUTHENTICATION",
-		Action:      "WEBAUTHN_REG_BEGIN",
+		Action:      "janusface_REG_BEGIN",
 		ObjectType:  "User",
 		ObjectID:    req.UserID,
-		PerformedBy: "WebAuthn",
-		Source:      "WebAuthn",
+		PerformedBy: "janusface",
+		Source:      "janusface",
 		Severity:    "INFO",
 		Details: map[string]interface{}{
 			"challenge":             ch,
@@ -185,7 +186,7 @@ func FinishRegistration(req FinishRegistrationRequest) (FinishRegistrationRespon
 	if credID == "" { return FinishRegistrationResponse{Success: false, Message: "invalid credential"}, nil }
 	// Idempotent: ensure not existing, otherwise create and link to user
 	// Check existing without requiring an index on credentialId: list user's credentials and compare in code
-	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(WebAuthnCredential)) { credentialId } } }`, userUID)
+	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(janusfaceCredential)) { credentialId } } }`, userUID)
 	res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
 	if qerr == nil && res.Json != "" {
 		var parsed struct {
@@ -202,7 +203,7 @@ func FinishRegistration(req FinishRegistrationRequest) (FinishRegistrationRespon
 					if cs, ierr := sessions.Initialize(); ierr == nil {
 						if sresp, serr := cs.IssueSession(context.Background(), &sessions.SessionRequest{
 							UserID:    req.UserID,
-							AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_WEBAUTHN, "method": sessions.SESSION_TYPE_WEBAUTHN},
+							AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_janusface, "method": sessions.SESSION_TYPE_janusface},
 							IPAddress: req.IPAddress,
 							UserAgent: req.UserAgent,
 						}); serr == nil {
@@ -216,7 +217,7 @@ func FinishRegistration(req FinishRegistrationRequest) (FinishRegistrationRespon
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	nq := fmt.Sprintf(`_:k <dgraph.type> "WebAuthnCredential" .
+	nq := fmt.Sprintf(`_:k <dgraph.type> "janusfaceCredential" .
 _:k <credentialId> %q .
 _:k <signCount> "0"^^<http://www.w3.org/2001/XMLSchema#int> .
 _:k <addedAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .
@@ -228,8 +229,8 @@ _:k <user> <%s> .`, credID, now, userUID)
 		transports = strings.Join(cred.Transports, ",")
 	}
 	if transports != "" { nq += "\n_:k <transports> \"" + transports + "\" ." }
-	// Persist credentialDID: sha256("webauthn:" + userID + ":" + credentialId) in hex
-	seed := "webauthn:" + req.UserID + ":" + credID
+	// Persist credentialDID: sha256("janusface:" + userID + ":" + credentialId) in hex
+	seed := "janusface:" + req.UserID + ":" + credID
 	sum := sha256.Sum256([]byte(seed))
 	credDID := hex.EncodeToString(sum[:])
 	nq += fmt.Sprintf("\n_:k <credentialDID> %q .", credDID)
@@ -243,7 +244,7 @@ _:k <user> <%s> .`, credID, now, userUID)
 	if cs, ierr := sessions.Initialize(); ierr == nil {
 		if sresp, serr := cs.IssueSession(context.Background(), &sessions.SessionRequest{
 			UserID:    req.UserID,
-			AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_WEBAUTHN, "method": sessions.SESSION_TYPE_WEBAUTHN},
+			AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_janusface, "method": sessions.SESSION_TYPE_janusface},
 			IPAddress: req.IPAddress,
 			UserAgent: req.UserAgent,
 		}); serr == nil {
@@ -252,18 +253,18 @@ _:k <user> <%s> .`, credID, now, userUID)
 		}
 	}
 
-	// Audit: WebAuthn registration finish
+	// Audit: janusface registration finish
 	utcNow := time.Now().UTC()
 	tzName := "UTC"
 	localNow := utcNow
 	offsetMinutes := 0
 	_, _ = audit.Log(audit.EntryParams{
 		Category:    "AUTHENTICATION",
-		Action:      "WEBAUTHN_REG_FINISH",
+		Action:      "janusface_REG_FINISH",
 		ObjectType:  "User",
 		ObjectID:    req.UserID,
-		PerformedBy: "WebAuthn",
-		Source:      "WebAuthn",
+		PerformedBy: "janusface",
+		Source:      "janusface",
 		Severity:    "INFO",
 		Details: map[string]interface{}{
 			"credentialId":          credID,
@@ -287,7 +288,7 @@ func BeginLogin(req BeginLoginRequest) (BeginLoginResponse, error) {
 	ch, err := randomChallenge(32)
 	if err != nil { return BeginLoginResponse{}, err }
 	// Allowed credentials for user (optional)
-	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(WebAuthnCredential)) { credentialId } } }`, userUID)
+	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(janusfaceCredential)) { credentialId } } }`, userUID)
 	res, _ := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
 	var allow []map[string]any
 	if res.Json != "" {
@@ -306,18 +307,18 @@ func BeginLogin(req BeginLoginRequest) (BeginLoginResponse, error) {
 	exp, err := saveChallenge(ch, req.UserID, "authentication", 5)
 	if err != nil { return BeginLoginResponse{}, err }
 
-	// Audit: WebAuthn login begin
+	// Audit: janusface login begin
 	utcNow := time.Now().UTC()
 	tzName := "UTC"
 	localNow := utcNow
 	offsetMinutes := 0
 	_, _ = audit.Log(audit.EntryParams{
 		Category:    "AUTHENTICATION",
-		Action:      "WEBAUTHN_LOGIN_BEGIN",
+		Action:      "janusface_LOGIN_BEGIN",
 		ObjectType:  "User",
 		ObjectID:    req.UserID,
-		PerformedBy: "WebAuthn",
-		Source:      "WebAuthn",
+		PerformedBy: "janusface",
+		Source:      "janusface",
 		Severity:    "INFO",
 		Details: map[string]interface{}{
 			"challenge":             ch,
@@ -350,7 +351,7 @@ func FinishLogin(req FinishLoginRequest) (FinishLoginResponse, error) {
 	// Check credential exists for this user without requiring an index
 	// Fetch user's credentials and compare locally
 	userUID, _ := getUserUIDByDID(req.UserID)
-	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(WebAuthnCredential)) { credentialId } } }`, userUID)
+	q := fmt.Sprintf(`{ u(func: uid(%s)) { creds: ~user @filter(type(janusfaceCredential)) { credentialId } } }`, userUID)
 	res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
 	if err != nil || res.Json == "" { return FinishLoginResponse{Success: false, Message: "credential not found"}, nil }
 	var parsed struct { U []struct { Creds []struct{ ID string `json:"credentialId"` } `json:"creds"` } `json:"u"` }
@@ -366,7 +367,7 @@ func FinishLogin(req FinishLoginRequest) (FinishLoginResponse, error) {
 	if cs, ierr := sessions.Initialize(); ierr == nil {
 		if sresp, serr := cs.IssueSession(context.Background(), &sessions.SessionRequest{
 			UserID:    req.UserID,
-			AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_WEBAUTHN, "method": sessions.SESSION_TYPE_WEBAUTHN},
+			AdditionalClaims: map[string]interface{}{"amr": sessions.SESSION_TYPE_janusface, "method": sessions.SESSION_TYPE_janusface},
 			IPAddress: req.IPAddress,
 			UserAgent: req.UserAgent,
 		}); serr == nil {
@@ -375,18 +376,18 @@ func FinishLogin(req FinishLoginRequest) (FinishLoginResponse, error) {
 		}
 	}
 
-	// Audit: WebAuthn login finish
+	// Audit: janusface login finish
 	utcNow := time.Now().UTC()
 	tzName := "UTC"
 	localNow := utcNow
 	offsetMinutes := 0
 	_, _ = audit.Log(audit.EntryParams{
 		Category:    "AUTHENTICATION",
-		Action:      "WEBAUTHN_LOGIN_FINISH",
+		Action:      "janusface_LOGIN_FINISH",
 		ObjectType:  "User",
 		ObjectID:    req.UserID,
-		PerformedBy: "WebAuthn",
-		Source:      "WebAuthn",
+		PerformedBy: "janusface",
+		Source:      "janusface",
 		Severity:    "INFO",
 		Details: map[string]interface{}{
 			"credentialId":          credID,

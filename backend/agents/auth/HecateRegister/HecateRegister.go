@@ -2,15 +2,16 @@ package HecateRegister
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"net"
-	"time"
 	"strings"
+	"time"
 
-	"backend/agents/audit"
+	audit "backend/agents/audit/ThemisLog"
+
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
@@ -21,12 +22,12 @@ type UserRegistrationRequest struct {
 	ChannelType  string `json:"channelType"`  // "email" or "phone"
 	Recipient    string `json:"recipient"`    // email address or phone number
 	
-	// User profile information
+	// User persona information
 	FirstName    string `json:"firstName"`
 	LastName     string `json:"lastName"`
 	DisplayName  string `json:"displayName,omitempty"`
 	
-	// Optional profile data
+	// Optional persona data
 	Timezone     string `json:"timezone,omitempty"`
 	Language     string `json:"language,omitempty"`
 	

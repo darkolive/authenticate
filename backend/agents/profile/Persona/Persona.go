@@ -1,20 +1,21 @@
-package Profile
+package Persona
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "strings"
-    "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 
-    "backend/agents/audit"
-    "github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
+	audit "backend/agents/audit/ThemisLog"
+
+	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
-// UpdateProfileRequest contains profile fields to persist for a user
+// UpdatepersonaRequest contains persona fields to persist for a user
 // The user is identified by their DID stored in the User.did predicate
 // (this DID corresponds to the userID used across the app)
-type UpdateProfileRequest struct {
+type UpdatepersonaRequest struct {
     UserID      string `json:"userID"`
     FirstName   string `json:"firstName,omitempty"`
     LastName    string `json:"lastName,omitempty"`
@@ -23,23 +24,23 @@ type UpdateProfileRequest struct {
     UserAgent   string `json:"userAgent,omitempty"`
 }
 
-// UpdateProfileResponse is returned after updating the user's profile
-type UpdateProfileResponse struct {
+// UpdatepersonaResponse is returned after updating the user's persona
+type UpdatepersonaResponse struct {
     Success   bool   `json:"success"`
     Message   string `json:"message,omitempty"`
     UserID    string `json:"userID,omitempty"`
     UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
-// ProfileCompleteRequest asks if a user's profile is complete
-// A profile is considered complete if either displayName or name is set
+// CompletepersonaRequest asks if a user's persona is complete
+// A persona is considered complete if either displayName or name is set
 // (name can be a concatenation of first/last names)
-type ProfileCompleteRequest struct {
+type CompletepersonaRequest struct {
     UserID string `json:"userID"`
 }
 
-// ProfileCompleteResponse indicates the completeness state for gating
-type ProfileCompleteResponse struct {
+// CompletepersonaResponse indicates the completeness state for gating
+type CompletepersonaResponse struct {
     Complete       bool   `json:"complete"`
     HasDisplayName bool   `json:"hasDisplayName"`
     HasName        bool   `json:"hasName"`
@@ -47,15 +48,15 @@ type ProfileCompleteResponse struct {
     Message        string `json:"message,omitempty"`
 }
 
-// UpdateUserProfile updates a user's displayName and/or name predicates
+// UpdateUserpersona updates a user's displayName and/or name predicates
 // and refreshes updatedAt. The user is located via did == UserID.
-func UpdateUserProfile(_ context.Context, req UpdateProfileRequest) (UpdateProfileResponse, error) {
+func UpdateUserpersona(_ context.Context, req UpdatepersonaRequest) (UpdatepersonaResponse, error) {
     uid, err := getUserUIDByDID(req.UserID)
     if err != nil {
-        return UpdateProfileResponse{Success: false, Message: "user not found"}, nil
+        return UpdatepersonaResponse{Success: false, Message: "user not found"}, nil
     }
 
-    // Fetch pre-update profile flags to compare and include in audit details
+    // Fetch pre-update persona flags to compare and include in audit details
     var beforeDisplayName, beforeName string
     {
         q := fmt.Sprintf(`{
@@ -105,7 +106,7 @@ func UpdateUserProfile(_ context.Context, req UpdateProfileRequest) (UpdateProfi
 
     mu := dgraph.NewMutation().WithSetNquads(nquads)
     if _, err := dgraph.ExecuteMutations("dgraph", mu); err != nil {
-        return UpdateProfileResponse{Success: false, Message: fmt.Sprintf("update failed: %v", err)}, nil
+        return UpdatepersonaResponse{Success: false, Message: fmt.Sprintf("update failed: %v", err)}, nil
     }
 
     // Compute after-update flags for audit (assume fields unchanged if not set)
@@ -122,12 +123,12 @@ func UpdateUserProfile(_ context.Context, req UpdateProfileRequest) (UpdateProfi
     // Emit audit event (best-effort; failures do not affect response)
     if len(updatedFields) > 0 {
         _, _ = audit.Log(audit.EntryParams{
-            Category:     "PROFILE",
-            Action:       "PROFILE_UPDATED",
+            Category:     "persona",
+            Action:       "persona_UPDATED",
             ObjectType:   "User",
             ObjectID:     req.UserID,
-            PerformedBy:  "Profile",
-            Source:       "UpdateUserProfile",
+            PerformedBy:  "persona",
+            Source:       "UpdateUserpersona",
             Severity:     "INFO",
             Timestamp:    time.Now().UTC(),
             Details: map[string]interface{}{
@@ -149,14 +150,14 @@ func UpdateUserProfile(_ context.Context, req UpdateProfileRequest) (UpdateProfi
         })
     }
 
-    return UpdateProfileResponse{Success: true, Message: "profile updated", UserID: req.UserID, UpdatedAt: updatedAt}, nil
+    return UpdatepersonaResponse{Success: true, Message: "persona updated", UserID: req.UserID, UpdatedAt: updatedAt}, nil
 }
 
-// IsProfileComplete checks whether the user has sufficient profile fields set
-func IsProfileComplete(req ProfileCompleteRequest) (ProfileCompleteResponse, error) {
+// IspersonaComplete checks whether the user has sufficient persona fields set
+func IspersonaComplete(req CompletepersonaRequest) (CompletepersonaResponse, error) {
     uid, err := getUserUIDByDID(req.UserID)
     if err != nil {
-        return ProfileCompleteResponse{Complete: false, Message: "user not found"}, nil
+        return CompletepersonaResponse{Complete: false, Message: "user not found"}, nil
     }
 
     q := fmt.Sprintf(`{
@@ -169,7 +170,7 @@ func IsProfileComplete(req ProfileCompleteRequest) (ProfileCompleteResponse, err
 
     res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
     if qerr != nil {
-        return ProfileCompleteResponse{Complete: false, Message: fmt.Sprintf("query failed: %v", qerr)}, nil
+        return CompletepersonaResponse{Complete: false, Message: fmt.Sprintf("query failed: %v", qerr)}, nil
     }
 
     var parsed struct {
@@ -183,7 +184,7 @@ func IsProfileComplete(req ProfileCompleteRequest) (ProfileCompleteResponse, err
         _ = json.Unmarshal([]byte(res.Json), &parsed)
     }
     if len(parsed.U) == 0 {
-        return ProfileCompleteResponse{Complete: false, Message: "user not found"}, nil
+        return CompletepersonaResponse{Complete: false, Message: "user not found"}, nil
     }
 
     dn := strings.TrimSpace(parsed.U[0].DisplayName)
@@ -192,7 +193,7 @@ func IsProfileComplete(req ProfileCompleteRequest) (ProfileCompleteResponse, err
     hasNM := nm != ""
     complete := hasDN || hasNM
 
-    return ProfileCompleteResponse{
+    return CompletepersonaResponse{
         Complete:       complete,
         HasDisplayName: hasDN,
         HasName:        hasNM,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Query recent PROFILE_UPDATED audit entries for a given userID (DID)
+# Query recent persona_UPDATED audit entries for a given userID (DID)
 # Usage:
-#   ./query_audit_profile_updates.sh <USER_ID> [LIMIT]
+#   ./query_audit_persona_updates.sh <USER_ID> [LIMIT]
 # Env:
 #   DGRAPH_URL (default: http://localhost:8080)
 
@@ -24,7 +24,7 @@ QUERY_ENDPOINT="${DGRAPH_URL%/}/query"
 
 read -r -d '' GQL <<'EOF'
 {
-  q(func: type(AuditEntry), orderdesc: timestamp, first: LIMIT_HERE) @filter(eq(category, "PROFILE") AND eq(action, "PROFILE_UPDATED") AND eq(objectId, "USER_ID_HERE")) {
+  q(func: type(AuditEntry), orderdesc: timestamp, first: LIMIT_HERE) @filter(eq(category, "persona") AND eq(action, "persona_UPDATED") AND eq(objectId, "USER_ID_HERE")) {
     id
     category
     action

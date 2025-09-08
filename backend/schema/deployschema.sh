@@ -22,6 +22,7 @@ ROLE_TENANT_PREFIX="${ROLE_TENANT_PREFIX:-default}"
 MODULES=(
   common
   base
+  profile
   channels
   auth
   audit

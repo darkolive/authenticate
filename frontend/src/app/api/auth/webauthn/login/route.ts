@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { beginWebAuthnLogin, cerberusGate } from "@/lib/actions";
-import { getClientIp, normalizeRecipient, maybeDecodeURIComponent } from "@/lib/utils";
+import { beginjanusfaceLogin, cerberusGate } from "@/lib/actions";
+import {
+  getClientIp,
+  normalizeRecipient,
+  maybeDecodeURIComponent,
+} from "@/lib/utils";
 import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
@@ -11,7 +15,10 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     const channelDID = cookieStore.get("channelDID")?.value;
     const recipientRaw = cookieStore.get("authRecipient")?.value;
-    const channelType = cookieStore.get("authChannelType")?.value as "email" | "phone" | undefined;
+    const channelType = cookieStore.get("authChannelType")?.value as
+      | "email"
+      | "phone"
+      | undefined;
     if (!channelDID || !recipientRaw || !channelType) {
       return NextResponse.json(
         { error: "Missing authentication context. Verify OTP first." },
@@ -33,7 +40,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const data = await beginWebAuthnLogin({ userId: gate.userId, ipAddress, userAgent });
+    const data = await beginjanusfaceLogin({
+      userId: gate.userId,
+      ipAddress,
+      userAgent,
+    });
     return NextResponse.json({
       success: true,
       options: JSON.parse(data.optionsJSON),
@@ -41,8 +52,8 @@ export async function POST(req: Request) {
       expiresAt: data.expiresAt,
     });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Failed to process WebAuthn login";
+    const message =
+      e instanceof Error ? e.message : "Failed to process janusface login";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

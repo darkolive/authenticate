@@ -7,11 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"math/big"
+	"strings"
 	"time"
 
-	"backend/agents/audit"
+	audit "backend/agents/audit/ThemisLog"
 	"backend/services/email"
 
 	"github.com/hypermodeinc/modus/sdk/go/pkg/console"

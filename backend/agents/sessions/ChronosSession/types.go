@@ -56,7 +56,7 @@ type RevocationResponse struct {
 // SESSION_TYPES are predefined session authentication method types
 const (
 	SESSION_TYPE_OTP       = "otp"
-	SESSION_TYPE_WEBAUTHN  = "webauthn"
+	SESSION_TYPE_janusface  = "janusface"
 	SESSION_TYPE_PASSWORD  = "password"
 	SESSION_TYPE_OAUTH     = "oauth"
 	SESSION_TYPE_SSO       = "sso"

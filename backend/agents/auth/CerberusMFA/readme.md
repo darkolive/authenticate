@@ -17,8 +17,8 @@ CerberusMFA acts as the **authentication gateway** after OTP verification, deter
 1. 📧 CharonOTP: OTP verified → returns channelDID
 2. 🐕 CerberusMFA: Check UserChannels by channelHash
 3. 🔀 Decision:
-   - Existing User → Sign-in (WebAuthn + Passwordless fallback)
-   - New User → Registration (WebAuthn + Passwordless options + create UserProfile)
+   - Existing User → Sign-in (janusface + Passwordless fallback)
+   - New User → Registration (janusface + Passwordless options + create Userpersona)
 4. 📝 Audit Event: Record authentication attempt
 5. ChronosSession: Create session for user
 6. ChronosToken: Create token for user
@@ -44,7 +44,7 @@ CerberusMFA acts as the **authentication gateway** after OTP verification, deter
   "userExists": true,
   "action": "signin",
   "userId": "user_123",
-  "availableMethods": ["webauthn", "passwordless"],
+  "availableMethods": ["janusface", "passwordless"],
   "nextStep": "Choose authentication method",
   "message": "Welcome back! Please complete authentication."
 }
@@ -89,11 +89,11 @@ type UserChannels {
 ## Integration
 
 - **Input**: Receives channelDID from CharonOTP verification
-- **Output**: Directs to WebAuthn, Passwordless, or Registration agents
+- **Output**: Directs to janusface, Passwordless, or Registration agents
 - **Database**: Uses UserChannels for user lookup and tracking
 
 ## Three-Headed Defense
 
 1. **Head 1**: Channel verification (email/sms/whatsapp OTP)
 2. **Head 2**: User existence validation (UserChannels lookup)
-3. **Head 3**: Multi-factor completion (WebAuthn/Passwordless)
+3. **Head 3**: Multi-factor completion (janusface/Passwordless)

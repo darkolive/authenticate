@@ -43,11 +43,12 @@ export default function OnboardingPage() {
         body: JSON.stringify(values),
       });
       const data = await res.json();
-      if (!res.ok || !data?.success) throw new Error(data?.error || "Failed to save profile");
-      toast.success("Profile saved");
+      if (!res.ok || !data?.success)
+        throw new Error(data?.error || "Failed to save persona");
+      toast.success("persona saved");
       router.push("/dashboard");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to save profile";
+      const msg = e instanceof Error ? e.message : "Failed to save persona";
       toast.error(msg);
     }
   }
@@ -56,7 +57,7 @@ export default function OnboardingPage() {
     <div className="container mx-auto max-w-md py-10">
       <Card>
         <CardHeader>
-          <CardTitle>Complete your profile</CardTitle>
+          <CardTitle>Complete your persona</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -100,8 +101,14 @@ export default function OnboardingPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Saving..." : "Save and continue"}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={form.formState.isSubmitting}
+              >
+                {form.formState.isSubmitting
+                  ? "Saving..."
+                  : "Save and continue"}
               </Button>
             </form>
           </Form>

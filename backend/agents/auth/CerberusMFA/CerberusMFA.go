@@ -1,15 +1,16 @@
 package CerberusMFA
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
-    "encoding/json"
-    "fmt"
-    "strings"
-    "time"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 
-    "backend/agents/audit"
-    "github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
+	audit "backend/agents/audit/ThemisLog"
+
+	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
 // CerberusMFARequest is the input to the Cerberus gateway after OTP verification
@@ -35,7 +36,7 @@ type CerberusMFARequest struct {
 
 // CerberusMFAResponse communicates the route and available auth methods
 // UserID here refers to the public DID of the user (not the Dgraph UID)
-// availableMethods: e.g. ["webauthn", "passwordless"]
+// availableMethods: e.g. ["janusface", "passwordless"]
 //
 type CerberusMFAResponse struct {
     UserExists        bool     `json:"userExists"`
@@ -70,23 +71,23 @@ func generateChannelDID(channel, recipient string) string {
 }
 
 // evaluateAvailableMethods checks what MFA methods can be offered for a given user UID
-// Currently supports WebAuthn detection and passwordless fallback.
+// Currently supports janusface detection and passwordless fallback.
 func evaluateAvailableMethods(userUID string) (methods []string, err error) {
     // New users: passwordless path to complete registration
     if userUID == "" {
         return []string{"passwordless"}, nil
     }
 
-    // Existing users: prefer WebAuthn if any credential exists
+    // Existing users: prefer janusface if any credential exists
     q := fmt.Sprintf(`{
         u(func: uid(%s)) {
-            creds: ~user @filter(type(WebAuthnCredential)) { uid }
+            creds: ~user @filter(type(janusfaceCredential)) { uid }
         }
     }`, userUID)
 
     res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
     if qerr != nil {
-        return []string{"passwordless"}, fmt.Errorf("webauthn lookup failed: %v", qerr)
+        return []string{"passwordless"}, fmt.Errorf("janusface lookup failed: %v", qerr)
     }
     if res.Json == "" {
         return []string{"passwordless"}, nil
@@ -97,10 +98,10 @@ func evaluateAvailableMethods(userUID string) (methods []string, err error) {
         } `json:"u"`
     }
     if err := json.Unmarshal([]byte(res.Json), &parsed); err != nil {
-        return []string{"passwordless"}, fmt.Errorf("webauthn lookup parse failed: %v", err)
+        return []string{"passwordless"}, fmt.Errorf("janusface lookup parse failed: %v", err)
     }
     if len(parsed.U) > 0 && len(parsed.U[0].Creds) > 0 {
-        return []string{"webauthn"}, nil
+        return []string{"janusface"}, nil
     }
     // Temporary fallback when user has no passkey yet
     return []string{"passwordless"}, nil
@@ -250,7 +251,7 @@ func Evaluate(req CerberusMFARequest) (CerberusMFAResponse, error) {
         return CerberusMFAResponse{Action: "register"}, fmt.Errorf("unexpected user JSON format")
     }
 
-    // Evaluate available methods (webauthn + passwordless)
+    // Evaluate available methods (janusface + passwordless)
     methods, merr := evaluateAvailableMethods(user.UID)
     if merr != nil {
         // Non-fatal; proceed with passwordless only

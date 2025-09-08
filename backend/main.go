@@ -1,12 +1,12 @@
 package main
 
 import (
+	cerberus "backend/agents/auth/CerberusMFA"
 	charonotp "backend/agents/auth/CharonOTP"
 	hecateregister "backend/agents/auth/HecateRegister"
-	cerberus "backend/agents/auth/CerberusMFA"
-	webauthn "backend/agents/auth/WebAuthn"
+	janusface "backend/agents/auth/JanusFace"
+	persona "backend/agents/profile/Persona"
 	sessions "backend/agents/sessions/ChronosSession"
-	profile "backend/agents/users/Profile"
 	"context"
 )
 
@@ -27,36 +27,36 @@ func SendOTP(req *charonotp.OTPRequest) charonotp.OTPResponse {
     return resp
 }
 
-// UpdateUserProfile persists basic profile fields (name/displayName) for the user.
-func UpdateUserProfile(req *profile.UpdateProfileRequest) profile.UpdateProfileResponse {
+// UpdateUserpersona persists basic persona fields (name/displayName) for the user.
+func UpdateUserpersona(req *persona.UpdatepersonaRequest) persona.UpdatepersonaResponse {
     if req == nil {
-        r := profile.UpdateProfileRequest{}
-        resp, err := profile.UpdateUserProfile(context.Background(), r)
+        r := persona.UpdatepersonaRequest{}
+        resp, err := persona.UpdateUserpersona(context.Background(), r)
         if err != nil {
-            return profile.UpdateProfileResponse{Success: false, Message: err.Error()}
+            return persona.UpdatepersonaResponse{Success: false, Message: err.Error()}
         }
         return resp
     }
-    resp, err := profile.UpdateUserProfile(context.Background(), *req)
+    resp, err := persona.UpdateUserpersona(context.Background(), *req)
     if err != nil {
-        return profile.UpdateProfileResponse{Success: false, Message: err.Error()}
+        return persona.UpdatepersonaResponse{Success: false, Message: err.Error()}
     }
     return resp
 }
 
-// IsProfileComplete returns whether the user's profile has the minimum required fields.
-func IsProfileComplete(req *profile.ProfileCompleteRequest) profile.ProfileCompleteResponse {
+// IspersonaComplete returns whether the user's persona has the minimum required fields.
+func IspersonaComplete(req *persona.CompletepersonaRequest) persona.CompletepersonaResponse {
     if req == nil {
-        r := profile.ProfileCompleteRequest{}
-        resp, err := profile.IsProfileComplete(r)
+        r := persona.CompletepersonaRequest{}
+        resp, err := persona.IspersonaComplete(r)
         if err != nil {
-            return profile.ProfileCompleteResponse{Complete: false, Message: err.Error()}
+            return persona.CompletepersonaResponse{Complete: false, Message: err.Error()}
         }
         return resp
     }
-    resp, err := profile.IsProfileComplete(*req)
+    resp, err := persona.IspersonaComplete(*req)
     if err != nil {
-        return profile.ProfileCompleteResponse{Complete: false, Message: err.Error()}
+        return persona.CompletepersonaResponse{Complete: false, Message: err.Error()}
     }
     return resp
 }
@@ -132,70 +132,70 @@ func ValidateSession(req *sessions.ValidationRequest) sessions.ValidationRespons
     return *vresp
 }
 
-// BeginWebAuthnRegistration starts WebAuthn credential creation by returning options and a challenge.
-func BeginWebAuthnRegistration(req *webauthn.BeginRegistrationRequest) webauthn.BeginRegistrationResponse {
+// BeginjanusfaceRegistration starts janusface credential creation by returning options and a challenge.
+func BeginjanusfaceRegistration(req *janusface.BeginRegistrationRequest) janusface.BeginRegistrationResponse {
     if req == nil {
-        r := webauthn.BeginRegistrationRequest{}
-        resp, err := webauthn.BeginRegistration(r)
+        r := janusface.BeginRegistrationRequest{}
+        resp, err := janusface.BeginRegistration(r)
         if err != nil {
-            return webauthn.BeginRegistrationResponse{}
+            return janusface.BeginRegistrationResponse{}
         }
         return resp
     }
-    resp, err := webauthn.BeginRegistration(*req)
+    resp, err := janusface.BeginRegistration(*req)
     if err != nil {
-        return webauthn.BeginRegistrationResponse{}
+        return janusface.BeginRegistrationResponse{}
     }
     return resp
 }
 
-// FinishWebAuthnRegistration completes credential creation and stores the credential record.
-func FinishWebAuthnRegistration(req *webauthn.FinishRegistrationRequest) webauthn.FinishRegistrationResponse {
+// FinishjanusfaceRegistration completes credential creation and stores the credential record.
+func FinishjanusfaceRegistration(req *janusface.FinishRegistrationRequest) janusface.FinishRegistrationResponse {
     if req == nil {
-        r := webauthn.FinishRegistrationRequest{}
-        resp, err := webauthn.FinishRegistration(r)
+        r := janusface.FinishRegistrationRequest{}
+        resp, err := janusface.FinishRegistration(r)
         if err != nil {
-            return webauthn.FinishRegistrationResponse{Success: false, Message: err.Error()}
+            return janusface.FinishRegistrationResponse{Success: false, Message: err.Error()}
         }
         return resp
     }
-    resp, err := webauthn.FinishRegistration(*req)
+    resp, err := janusface.FinishRegistration(*req)
     if err != nil {
-        return webauthn.FinishRegistrationResponse{Success: false, Message: err.Error()}
+        return janusface.FinishRegistrationResponse{Success: false, Message: err.Error()}
     }
     return resp
 }
 
-// BeginWebAuthnLogin starts an assertion by returning request options and a challenge.
-func BeginWebAuthnLogin(req *webauthn.BeginLoginRequest) webauthn.BeginLoginResponse {
+// BeginjanusfaceLogin starts an assertion by returning request options and a challenge.
+func BeginjanusfaceLogin(req *janusface.BeginLoginRequest) janusface.BeginLoginResponse {
     if req == nil {
-        r := webauthn.BeginLoginRequest{}
-        resp, err := webauthn.BeginLogin(r)
+        r := janusface.BeginLoginRequest{}
+        resp, err := janusface.BeginLogin(r)
         if err != nil {
-            return webauthn.BeginLoginResponse{}
+            return janusface.BeginLoginResponse{}
         }
         return resp
     }
-    resp, err := webauthn.BeginLogin(*req)
+    resp, err := janusface.BeginLogin(*req)
     if err != nil {
-        return webauthn.BeginLoginResponse{}
+        return janusface.BeginLoginResponse{}
     }
     return resp
 }
 
-// FinishWebAuthnLogin finishes assertion verification (skeleton) and returns success status.
-func FinishWebAuthnLogin(req *webauthn.FinishLoginRequest) webauthn.FinishLoginResponse {
+// FinishjanusfaceLogin finishes assertion verification (skeleton) and returns success status.
+func FinishjanusfaceLogin(req *janusface.FinishLoginRequest) janusface.FinishLoginResponse {
     if req == nil {
-        r := webauthn.FinishLoginRequest{}
-        resp, err := webauthn.FinishLogin(r)
+        r := janusface.FinishLoginRequest{}
+        resp, err := janusface.FinishLogin(r)
         if err != nil {
-            return webauthn.FinishLoginResponse{Success: false, Message: err.Error()}
+            return janusface.FinishLoginResponse{Success: false, Message: err.Error()}
         }
         return resp
     }
-    resp, err := webauthn.FinishLogin(*req)
+    resp, err := janusface.FinishLogin(*req)
     if err != nil {
-        return webauthn.FinishLoginResponse{Success: false, Message: err.Error()}
+        return janusface.FinishLoginResponse{Success: false, Message: err.Error()}
     }
     return resp
 }

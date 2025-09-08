@@ -1,4 +1,4 @@
-type WebAuthnCredential {
+type janusfaceCredential {
     user
     credentialId
     credentialDID
@@ -18,8 +18,8 @@ signCount: int .
 transports: string .
 tenantId: string .
 
-##### WebAuthn Challenges (temporary storage for registration/authentication)
-type WebAuthnChallenge {
+##### janusface Challenges (temporary storage for registration/authentication)
+type janusfaceChallenge {
     challenge
     userId
     type

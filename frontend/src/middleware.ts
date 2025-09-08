@@ -19,54 +19,20 @@ export async function middleware(req: NextRequest) {
 
     try {
       // Validate the session via our API route, forwarding cookies
-      const res = await fetch(new URL("/api/auth/session/validate", req.nextUrl.origin), {
-        method: "GET",
-        headers: {
-          cookie: req.headers.get("cookie") || "",
-        },
-        cache: "no-store",
-      });
+      const res = await fetch(
+        new URL("/api/auth/session/validate", req.nextUrl.origin),
+        {
+          method: "GET",
+          headers: {
+            cookie: req.headers.get("cookie") || "",
+          },
+          cache: "no-store",
+        }
+      );
 
       if (res.ok) {
-        const data = (await res.json()) as { valid?: boolean; profileComplete?: boolean };
+        const data = (await res.json()) as { valid?: boolean };
         if (data?.valid) {
-          // Server-side gating based on profile completeness
-          if (pathname.startsWith("/dashboard")) {
-            if (data.profileComplete === false) {
-              const url = req.nextUrl.clone();
-              url.pathname = "/onboarding";
-              url.search = "";
-              return NextResponse.redirect(url);
-            }
-            // Fallback: if profile completeness is unknown, honor legacy cookie for now
-            if (typeof data.profileComplete === "undefined") {
-              const needs = req.cookies.get("needs_onboarding")?.value;
-              if (needs === "true") {
-                const url = req.nextUrl.clone();
-                url.pathname = "/onboarding";
-                url.search = "";
-                return NextResponse.redirect(url);
-              }
-            }
-          }
-          if (pathname.startsWith("/onboarding")) {
-            if (data.profileComplete === true) {
-              const url = req.nextUrl.clone();
-              url.pathname = "/dashboard";
-              url.search = "";
-              return NextResponse.redirect(url);
-            }
-            // Fallback: if unknown, and cookie not set to true, allow dashboard
-            if (typeof data.profileComplete === "undefined") {
-              const needs = req.cookies.get("needs_onboarding")?.value;
-              if (needs !== "true") {
-                const url = req.nextUrl.clone();
-                url.pathname = "/dashboard";
-                url.search = "";
-                return NextResponse.redirect(url);
-              }
-            }
-          }
           return NextResponse.next();
         }
       }

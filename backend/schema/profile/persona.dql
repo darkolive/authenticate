@@ -1,0 +1,31 @@
+### Persona Schema
+# Persona represents a contextual, user-defined public identity. It is separate from the base User
+# and can evolve independently with additional personal fields without coupling registration logic.
+
+##### Persona Type
+# Note: We intentionally do not add a back-edge from User to Persona here to avoid coupling
+# HecateRegister to Persona. Linkages can be created by writing a Persona node with `user` set.
+
+type Persona {
+    user
+    name
+    displayName
+    pronouns
+    avatar
+    preferences
+    language
+    timezone
+    createdAt
+    updatedAt
+    tenantId
+}
+
+##### Persona Predicates
+# `pronouns`, `language`, and `timezone` are indexed for simple filtering.
+# `preferences` is a JSON-encoded bag for UI preferences and can be evolved later.
+
+pronouns: string @index(exact) .
+avatar: string .
+preferences: string .     # JSON-encoded free-form preferences (e.g., {"theme":"dark"})
+language: string @index(exact) .
+timezone: string @index(exact) .

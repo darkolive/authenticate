@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { finishWebAuthnLogin, cerberusGate } from "@/lib/actions";
-import { getClientIp, normalizeRecipient, maybeDecodeURIComponent } from "@/lib/utils";
+import { finishjanusfaceLogin, cerberusGate } from "@/lib/actions";
+import {
+  getClientIp,
+  normalizeRecipient,
+  maybeDecodeURIComponent,
+} from "@/lib/utils";
 import { cookies } from "next/headers";
 import { createHash } from "crypto";
 
@@ -33,15 +37,19 @@ export async function POST(req: Request) {
     let resolvedUserId = body.userId;
     if (!resolvedUserId) {
       const cookieStore = await cookies();
-      const channelType = (body.channelType || cookieStore.get("authChannelType")?.value || "") as
-        | "email"
-        | "phone";
-      const recipientRaw = body.recipient || cookieStore.get("authRecipient")?.value || "";
+      const channelType = (body.channelType ||
+        cookieStore.get("authChannelType")?.value ||
+        "") as "email" | "phone";
+      const recipientRaw =
+        body.recipient || cookieStore.get("authRecipient")?.value || "";
       const recipientDecoded = maybeDecodeURIComponent(recipientRaw);
       const recipient = normalizeRecipient(channelType, recipientDecoded);
-      let channelDID = body.channelDID || cookieStore.get("channelDID")?.value || "";
+      let channelDID =
+        body.channelDID || cookieStore.get("channelDID")?.value || "";
       if (!channelDID && channelType && recipient) {
-        channelDID = createHash("sha256").update(`${channelType}:${recipient}`).digest("hex");
+        channelDID = createHash("sha256")
+          .update(`${channelType}:${recipient}`)
+          .digest("hex");
       }
       if (!channelDID || !recipient || !channelType) {
         return NextResponse.json(
@@ -64,7 +72,7 @@ export async function POST(req: Request) {
       }
       resolvedUserId = gate.userId;
     }
-    const data = await finishWebAuthnLogin({
+    const data = await finishjanusfaceLogin({
       userId: resolvedUserId,
       challenge,
       credentialJSON,
@@ -100,8 +108,8 @@ export async function POST(req: Request) {
     }
     return res;
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Failed to finish WebAuthn login";
+    const message =
+      e instanceof Error ? e.message : "Failed to finish janusface login";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

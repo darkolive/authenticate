@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { updateUserProfile, validateSession } from "@/lib/actions";
+import { updateUserpersona, validateSession } from "@/lib/actions";
 import { getClientIp } from "@/lib/utils";
 
 export async function POST(req: Request) {
@@ -18,7 +18,10 @@ export async function POST(req: Request) {
       token = cookieStore.get("hm_session")?.value;
     }
     if (!token) {
-      return NextResponse.json({ error: "missing session token" }, { status: 401 });
+      return NextResponse.json(
+        { error: "missing session token" },
+        { status: 401 }
+      );
     }
 
     const session = await validateSession(token);
@@ -26,10 +29,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid session" }, { status: 401 });
     }
 
-    // Persist profile to backend (strict)
+    // Persist persona to backend (strict)
     const ipAddress = getClientIp(req) ?? "";
     const userAgent = headers.get("user-agent") ?? "";
-    const up = await updateUserProfile({
+    const up = await updateUserpersona({
       userId: session.userId,
       firstName: body.firstName,
       lastName: body.lastName,
@@ -38,7 +41,10 @@ export async function POST(req: Request) {
       userAgent,
     });
     if (!up?.success) {
-      return NextResponse.json({ error: up?.message || "Failed to update profile" }, { status: 400 });
+      return NextResponse.json(
+        { error: up?.message || "Failed to update persona" },
+        { status: 400 }
+      );
     }
 
     const res = NextResponse.json({ success: true, updatedAt: up.updatedAt });
@@ -53,7 +59,8 @@ export async function POST(req: Request) {
     });
     return res;
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Failed to complete profile";
+    const message =
+      e instanceof Error ? e.message : "Failed to complete persona";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

@@ -10,7 +10,11 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { decodeRequestOptionsFromServer, decodeCreationOptionsFromServer, serializePublicKeyCredential } from "@/lib/webauthn";
+import {
+  decodeRequestOptionsFromServer,
+  decodeCreationOptionsFromServer,
+  serializePublicKeyCredential,
+} from "@/lib/webauthn";
 import {
   Form,
   FormControl,
@@ -20,7 +24,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from "@/components/ui/input-otp";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 
 // Local types for API responses
 type VerifyResp = {
@@ -74,9 +83,11 @@ export default function SignInPage() {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>("email");
   const [email, setEmail] = React.useState("");
-  const [channelDID, setChannelDID] = React.useState<string | undefined>(undefined);
+  const [channelDID, setChannelDID] = React.useState<string | undefined>(
+    undefined
+  );
   const [userId, setUserId] = React.useState<string | undefined>(undefined);
-  const [webauthnLoading, setWebauthnLoading] = React.useState(false);
+  const [janusfaceLoading, setjanusfaceLoading] = React.useState(false);
   const [magicLoading, setMagicLoading] = React.useState(false);
 
   // Email form
@@ -100,8 +111,8 @@ export default function SignInPage() {
     mode: "onSubmit",
   });
 
-  // --- WebAuthn flows ---
-  async function performWebAuthnLoginFlow(): Promise<boolean> {
+  // --- janusface flows ---
+  async function performjanusfaceLoginFlow(): Promise<boolean> {
     // Begin login
     const beginRes = await fetch("/api/auth/webauthn/login/begin", {
       method: "POST",
@@ -109,11 +120,14 @@ export default function SignInPage() {
       body: JSON.stringify({}),
     });
     const begin = await beginRes.json();
-    if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey login");
+    if (!beginRes.ok)
+      throw new Error(begin?.error || "Unable to start passkey login");
     const publicKey = decodeRequestOptionsFromServer(begin.options);
 
     // Get assertion
-    const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+    const cred = (await navigator.credentials.get({
+      publicKey,
+    })) as PublicKeyCredential | null;
     if (!cred) throw new Error("No credential returned");
     const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
 
@@ -121,14 +135,23 @@ export default function SignInPage() {
     const finishRes = await fetch("/api/auth/webauthn/login/finish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge: begin.challenge, credentialJSON, userId: begin.userId }),
+      body: JSON.stringify({
+        challenge: begin.challenge,
+        credentialJSON,
+        userId: begin.userId,
+      }),
     });
     const finish = await finishRes.json();
-    if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey verification failed");
+    if (!finishRes.ok || !finish?.success)
+      throw new Error(
+        finish?.error || finish?.message || "Passkey verification failed"
+      );
     return true;
   }
 
-  async function performWebAuthnRegisterFlow(displayName?: string): Promise<boolean> {
+  async function performjanusfaceRegisterFlow(
+    displayName?: string
+  ): Promise<boolean> {
     // Begin registration (server will auto-register user if needed)
     const beginRes = await fetch("/api/auth/webauthn/register/begin", {
       method: "POST",
@@ -136,11 +159,14 @@ export default function SignInPage() {
       body: JSON.stringify({ displayName }),
     });
     const begin = await beginRes.json();
-    if (!beginRes.ok) throw new Error(begin?.error || "Unable to start passkey registration");
+    if (!beginRes.ok)
+      throw new Error(begin?.error || "Unable to start passkey registration");
     const publicKey = decodeCreationOptionsFromServer(begin.options);
 
     // Create credential
-    const cred = (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
+    const cred = (await navigator.credentials.create({
+      publicKey,
+    })) as PublicKeyCredential | null;
     if (!cred) throw new Error("No credential returned");
     const credentialJSON = JSON.stringify(serializePublicKeyCredential(cred));
 
@@ -148,19 +174,29 @@ export default function SignInPage() {
     const finishRes = await fetch("/api/auth/webauthn/register/finish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge: begin.challenge, credentialJSON, userId: begin.userId }),
+      body: JSON.stringify({
+        challenge: begin.challenge,
+        credentialJSON,
+        userId: begin.userId,
+      }),
     });
     const finish = await finishRes.json();
-    if (!finishRes.ok || !finish?.success) throw new Error(finish?.error || finish?.message || "Passkey registration failed");
+    if (!finishRes.ok || !finish?.success)
+      throw new Error(
+        finish?.error || finish?.message || "Passkey registration failed"
+      );
     return true;
   }
 
-  async function attemptPasskeyFlow(action: "signin" | "register", displayName?: string) {
+  async function attemptPasskeyFlow(
+    action: "signin" | "register",
+    displayName?: string
+  ) {
     try {
-      setWebauthnLoading(true);
+      setjanusfaceLoading(true);
       if (action === "signin") {
         try {
-          const ok = await performWebAuthnLoginFlow();
+          const ok = await performjanusfaceLoginFlow();
           if (ok) {
             toast.success("Signed in with passkey");
             router.push("/dashboard");
@@ -169,24 +205,28 @@ export default function SignInPage() {
         } catch (e) {
           // If login fails (no credential or cancelled), try registration as fallback
           const errMsg = e instanceof Error ? e.message : String(e);
-          console.warn("[webauthn] login failed, falling back to registration", errMsg);
+          console.warn(
+            "[janusface] login failed, falling back to registration",
+            errMsg
+          );
         }
       }
 
       // Registration path (either action === 'register' or login fallback)
-      const registered = await performWebAuthnRegisterFlow(displayName);
+      const registered = await performjanusfaceRegisterFlow(displayName);
       if (registered) {
         toast.success("Passkey added to your account");
-        // After creating a new passkey (usually for new users), send them to onboarding to complete profile details.
-        router.push("/onboarding");
+        // New flow: go straight to dashboard after adding a passkey.
+        router.push("/dashboard");
         return;
       }
       throw new Error("Passkey flow did not complete");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to complete biometric flow";
+      const msg =
+        e instanceof Error ? e.message : "Failed to complete biometric flow";
       toast.error(msg);
     } finally {
-      setWebauthnLoading(false);
+      setjanusfaceLoading(false);
     }
   }
 
@@ -197,7 +237,8 @@ export default function SignInPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel: "email", recipient: values.email }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to send OTP");
+      if (!res.ok)
+        throw new Error((await res.json()).error || "Failed to send OTP");
       toast.success("OTP sent. Check your inbox.");
       setEmail(values.email);
       setStep("otp");
@@ -209,13 +250,13 @@ export default function SignInPage() {
 
   async function onCreatePasskey() {
     try {
-      setWebauthnLoading(true);
+      setjanusfaceLoading(true);
       await attemptPasskeyFlow("register");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to create passkey";
       toast.error(msg);
     } finally {
-      setWebauthnLoading(false);
+      setjanusfaceLoading(false);
     }
   }
 
@@ -227,7 +268,8 @@ export default function SignInPage() {
         body: JSON.stringify({ otpCode: values.code, recipient: email }),
       });
       const data = (await res.json()) as VerifyResp | ErrorResp;
-      if (!res.ok || isErrorResp(data)) throw new Error(isErrorResp(data) ? data.error : "Verification failed");
+      if (!res.ok || isErrorResp(data))
+        throw new Error(isErrorResp(data) ? data.error : "Verification failed");
 
       toast.success((data as VerifyResp).message || "Verified");
       const v = data as VerifyResp;
@@ -246,7 +288,9 @@ export default function SignInPage() {
       });
       const cerb = (await cerbRes.json()) as CerberusResp | ErrorResp;
       if (!cerbRes.ok || isErrorResp(cerb)) {
-        throw new Error(isErrorResp(cerb) ? cerb.error : "Cerberus evaluation failed");
+        throw new Error(
+          isErrorResp(cerb) ? cerb.error : "Cerberus evaluation failed"
+        );
       }
       const c = cerb as CerberusResp;
       if (c.userId) setUserId(c.userId);
@@ -270,7 +314,8 @@ export default function SignInPage() {
         lastName: values.lastName,
         displayName: values.displayName,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        language: typeof navigator !== "undefined" ? navigator.language : undefined,
+        language:
+          typeof navigator !== "undefined" ? navigator.language : undefined,
       };
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -278,7 +323,8 @@ export default function SignInPage() {
         body: JSON.stringify(payload),
       });
       const data = (await res.json()) as RegisterResp | ErrorResp;
-      if (!res.ok || isErrorResp(data)) throw new Error(isErrorResp(data) ? data.error : "Registration failed");
+      if (!res.ok || isErrorResp(data))
+        throw new Error(isErrorResp(data) ? data.error : "Registration failed");
       const r = data as RegisterResp;
       setUserId(r.userId);
       toast.success("Registration complete");
@@ -291,13 +337,13 @@ export default function SignInPage() {
 
   async function onPasskeySignIn() {
     try {
-      setWebauthnLoading(true);
+      setjanusfaceLoading(true);
       await attemptPasskeyFlow("signin");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to sign in";
       toast.error(msg);
     } finally {
-      setWebauthnLoading(false);
+      setjanusfaceLoading(false);
     }
   }
 
@@ -323,8 +369,15 @@ export default function SignInPage() {
   function SignInStubs() {
     return (
       <div className="grid gap-4">
-        <Button type="button" onClick={onPasskeySignIn} className="w-full" disabled={webauthnLoading}>
-          {webauthnLoading ? "Signing in..." : "Sign in with Passkey (WebAuthn)"}
+        <Button
+          type="button"
+          onClick={onPasskeySignIn}
+          className="w-full"
+          disabled={janusfaceLoading}
+        >
+          {janusfaceLoading
+            ? "Signing in..."
+            : "Sign in with Passkey (janusface)"}
         </Button>
         <Button
           type="button"
@@ -348,7 +401,10 @@ export default function SignInPage() {
         <CardContent className="space-y-6">
           {step === "email" && (
             <Form {...emailForm}>
-              <form onSubmit={emailForm.handleSubmit(onSendOTP)} className="space-y-4">
+              <form
+                onSubmit={emailForm.handleSubmit(onSendOTP)}
+                className="space-y-4"
+              >
                 <FormField
                   control={emailForm.control}
                   name="email"
@@ -356,14 +412,24 @@ export default function SignInPage() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} />
+                        <Input
+                          type="email"
+                          placeholder="you@example.com"
+                          {...field}
+                        />
                       </FormControl>
-                      <FormDescription>We&apos;ll send a one-time code to this address.</FormDescription>
+                      <FormDescription>
+                        We&apos;ll send a one-time code to this address.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={emailForm.formState.isSubmitting}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={emailForm.formState.isSubmitting}
+                >
                   {emailForm.formState.isSubmitting ? "Sending..." : "Send OTP"}
                 </Button>
               </form>
@@ -372,7 +438,10 @@ export default function SignInPage() {
 
           {step === "otp" && (
             <Form {...otpForm}>
-              <form onSubmit={otpForm.handleSubmit(onVerifyOTP)} className="space-y-4">
+              <form
+                onSubmit={otpForm.handleSubmit(onVerifyOTP)}
+                className="space-y-4"
+              >
                 <FormField
                   control={otpForm.control}
                   name="code"
@@ -380,7 +449,11 @@ export default function SignInPage() {
                     <FormItem>
                       <FormLabel>Enter 6-digit code</FormLabel>
                       <FormControl>
-                        <InputOTP maxLength={6} value={field.value} onChange={field.onChange}>
+                        <InputOTP
+                          maxLength={6}
+                          value={field.value}
+                          onChange={field.onChange}
+                        >
                           <InputOTPGroup>
                             <InputOTPSlot index={0} />
                             <InputOTPSlot index={1} />
@@ -402,7 +475,11 @@ export default function SignInPage() {
                   )}
                 />
                 <div className="flex gap-2">
-                  <Button type="submit" className="flex-1" disabled={otpForm.formState.isSubmitting}>
+                  <Button
+                    type="submit"
+                    className="flex-1"
+                    disabled={otpForm.formState.isSubmitting}
+                  >
                     {otpForm.formState.isSubmitting ? "Verifying..." : "Verify"}
                   </Button>
                   <Button
@@ -419,14 +496,19 @@ export default function SignInPage() {
 
           {step === "signin" && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">User found. Continue with sign-in.</p>
+              <p className="text-sm text-muted-foreground">
+                User found. Continue with sign-in.
+              </p>
               <SignInStubs />
             </div>
           )}
 
           {step === "register" && (
             <Form {...regForm}>
-              <form onSubmit={regForm.handleSubmit(onRegister)} className="space-y-4">
+              <form
+                onSubmit={regForm.handleSubmit(onRegister)}
+                className="space-y-4"
+              >
                 <div className="grid grid-cols-1 gap-4">
                   <FormField
                     control={regForm.control}
@@ -468,8 +550,14 @@ export default function SignInPage() {
                     )}
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={regForm.formState.isSubmitting}>
-                  {regForm.formState.isSubmitting ? "Registering..." : "Complete registration"}
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={regForm.formState.isSubmitting}
+                >
+                  {regForm.formState.isSubmitting
+                    ? "Registering..."
+                    : "Complete registration"}
                 </Button>
               </form>
             </Form>
@@ -481,8 +569,15 @@ export default function SignInPage() {
                 <p className="text-sm text-muted-foreground">Success.</p>
                 <p className="text-sm">User ID: {userId}</p>
               </div>
-              <Button type="button" onClick={onCreatePasskey} disabled={webauthnLoading} className="w-full">
-                {webauthnLoading ? "Working..." : "Add a Passkey (Recommended)"}
+              <Button
+                type="button"
+                onClick={onCreatePasskey}
+                disabled={janusfaceLoading}
+                className="w-full"
+              >
+                {janusfaceLoading
+                  ? "Working..."
+                  : "Add a Passkey (Recommended)"}
               </Button>
             </div>
           )}

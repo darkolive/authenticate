@@ -7,7 +7,9 @@ const GRAPHQL_URL = process.env.BACKEND_GRAPHQL_URL;
 const MODUS_API_KEY = process.env.MODUS_API_KEY;
 
 if (!GRAPHQL_URL) {
-  console.warn("[actions] BACKEND_GRAPHQL_URL is not set. Set it in .env.local");
+  console.warn(
+    "[actions] BACKEND_GRAPHQL_URL is not set. Set it in .env.local"
+  );
 }
 if (!MODUS_API_KEY) {
   console.warn("[actions] MODUS_API_KEY is not set. Set it in .env.local");
@@ -85,9 +87,14 @@ export type UserRegistrationResponse = {
   createdAt: string;
 };
 
-async function fetchGraphQL<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+async function fetchGraphQL<T>(
+  query: string,
+  variables?: Record<string, unknown>
+): Promise<T> {
   if (!GRAPHQL_URL) {
-    throw new Error("GraphQL environment not configured. Set BACKEND_GRAPHQL_URL");
+    throw new Error(
+      "GraphQL environment not configured. Set BACKEND_GRAPHQL_URL"
+    );
   }
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -130,7 +137,9 @@ export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
   return data.sendOTP;
 }
 
-export async function verifyOTP(req: VerifyOTPRequest): Promise<VerifyOTPResponse> {
+export async function verifyOTP(
+  req: VerifyOTPRequest
+): Promise<VerifyOTPResponse> {
   const query = /* GraphQL */ `
     query VerifyOTP($otpCode: String!, $recipient: String!) {
       verifyOTP(req: { oTPCode: $otpCode, recipient: $recipient }) {
@@ -150,32 +159,34 @@ export async function verifyOTP(req: VerifyOTPRequest): Promise<VerifyOTPRespons
   return data.verifyOTP;
 }
 
-export async function registerUser(req: UserRegistrationRequest): Promise<UserRegistrationResponse> {
+export async function registerUser(
+  req: UserRegistrationRequest
+): Promise<UserRegistrationResponse> {
   const query = /* GraphQL */ `
     query RegisterUser(
-      $channelDID: String!,
-      $channelType: String!,
-      $recipient: String!,
-      $firstName: String!,
-      $lastName: String!,
-      $displayName: String!,
-      $timezone: String!,
-      $language: String!,
-      $ipAddress: String!,
+      $channelDID: String!
+      $channelType: String!
+      $recipient: String!
+      $firstName: String!
+      $lastName: String!
+      $displayName: String!
+      $timezone: String!
+      $language: String!
+      $ipAddress: String!
       $userAgent: String!
     ) {
       registerUser(
         req: {
-          channelDID: $channelDID,
-          channelType: $channelType,
-          recipient: $recipient,
-          firstName: $firstName,
-          lastName: $lastName,
-          displayName: $displayName,
-          timezone: $timezone,
-          language: $language,
-          iPAddress: $ipAddress,
-          userAgent: $userAgent,
+          channelDID: $channelDID
+          channelType: $channelType
+          recipient: $recipient
+          firstName: $firstName
+          lastName: $lastName
+          displayName: $displayName
+          timezone: $timezone
+          language: $language
+          iPAddress: $ipAddress
+          userAgent: $userAgent
           metadata: []
         }
       ) {
@@ -208,21 +219,23 @@ export async function registerUser(req: UserRegistrationRequest): Promise<UserRe
   return data.registerUser;
 }
 
-export async function cerberusGate(req: CerberusGateRequest): Promise<CerberusGateResponse> {
+export async function cerberusGate(
+  req: CerberusGateRequest
+): Promise<CerberusGateResponse> {
   const query = /* GraphQL */ `
     query CerberusGate(
-      $channelDID: String!,
-      $channelType: String!,
-      $recipient: String!,
-      $ipAddress: String!,
+      $channelDID: String!
+      $channelType: String!
+      $recipient: String!
+      $ipAddress: String!
       $userAgent: String!
     ) {
       cerberusGate(
         req: {
-          channelDID: $channelDID,
-          channelType: $channelType,
-          recipient: $recipient,
-          iPAddress: $ipAddress,
+          channelDID: $channelDID
+          channelType: $channelType
+          recipient: $recipient
+          iPAddress: $ipAddress
           userAgent: $userAgent
         }
       ) {
@@ -247,26 +260,36 @@ export async function cerberusGate(req: CerberusGateRequest): Promise<CerberusGa
   return data.cerberusGate;
 }
 
-// WebAuthn actions
-export type BeginWebAuthnRegistrationRequest = {
+// janusface actions
+export type BeginjanusfaceRegistrationRequest = {
   userId: string;
   displayName?: string;
   ipAddress?: string;
   userAgent?: string;
 };
-export type BeginWebAuthnRegistrationResponse = {
+export type BeginjanusfaceRegistrationResponse = {
   optionsJSON: string;
   challenge: string;
   expiresAt: string;
 };
 
-export async function beginWebAuthnRegistration(
-  req: BeginWebAuthnRegistrationRequest
-): Promise<BeginWebAuthnRegistrationResponse> {
+export async function beginjanusfaceRegistration(
+  req: BeginjanusfaceRegistrationRequest
+): Promise<BeginjanusfaceRegistrationResponse> {
   const query = /* GraphQL */ `
-    query BeginWebAuthnRegistration($userID: String!, $displayName: String!, $ipAddress: String!, $userAgent: String!) {
-      beginWebAuthnRegistration(
-        req: { userID: $userID, displayName: $displayName, iPAddress: $ipAddress, userAgent: $userAgent }
+    query BeginjanusfaceRegistration(
+      $userID: String!
+      $displayName: String!
+      $ipAddress: String!
+      $userAgent: String!
+    ) {
+      beginjanusfaceRegistration(
+        req: {
+          userID: $userID
+          displayName: $displayName
+          iPAddress: $ipAddress
+          userAgent: $userAgent
+        }
       ) {
         optionsJSON
         challenge
@@ -274,24 +297,26 @@ export async function beginWebAuthnRegistration(
       }
     }
   `;
-  type Data = { beginWebAuthnRegistration: BeginWebAuthnRegistrationResponse };
+  type Data = {
+    beginjanusfaceRegistration: BeginjanusfaceRegistrationResponse;
+  };
   const data = await fetchGraphQL<Data>(query, {
     userID: req.userId,
     displayName: req.displayName ?? "",
     ipAddress: req.ipAddress ?? "",
     userAgent: req.userAgent ?? "",
   });
-  return data.beginWebAuthnRegistration;
+  return data.beginjanusfaceRegistration;
 }
 
-export type FinishWebAuthnRegistrationRequest = {
+export type FinishjanusfaceRegistrationRequest = {
   userId: string;
   challenge: string;
   credentialJSON: string;
   ipAddress?: string;
   userAgent?: string;
 };
-export type FinishWebAuthnRegistrationResponse = {
+export type FinishjanusfaceRegistrationResponse = {
   success: boolean;
   message: string;
   credentialId?: string;
@@ -299,18 +324,25 @@ export type FinishWebAuthnRegistrationResponse = {
   sessionExpiresAt?: string;
 };
 
-export async function finishWebAuthnRegistration(
-  req: FinishWebAuthnRegistrationRequest
-): Promise<FinishWebAuthnRegistrationResponse> {
+export async function finishjanusfaceRegistration(
+  req: FinishjanusfaceRegistrationRequest
+): Promise<FinishjanusfaceRegistrationResponse> {
   const query = /* GraphQL */ `
-    query FinishWebAuthnRegistration(
-      $userID: String!,
-      $challenge: String!,
-      $credentialJSON: String!,
-      $ipAddress: String!, $userAgent: String!
+    query FinishjanusfaceRegistration(
+      $userID: String!
+      $challenge: String!
+      $credentialJSON: String!
+      $ipAddress: String!
+      $userAgent: String!
     ) {
-      finishWebAuthnRegistration(
-        req: { userID: $userID, challenge: $challenge, credentialJSON: $credentialJSON, iPAddress: $ipAddress, userAgent: $userAgent }
+      finishjanusfaceRegistration(
+        req: {
+          userID: $userID
+          challenge: $challenge
+          credentialJSON: $credentialJSON
+          iPAddress: $ipAddress
+          userAgent: $userAgent
+        }
       ) {
         success
         message
@@ -320,7 +352,9 @@ export async function finishWebAuthnRegistration(
       }
     }
   `;
-  type Data = { finishWebAuthnRegistration: FinishWebAuthnRegistrationResponse };
+  type Data = {
+    finishjanusfaceRegistration: FinishjanusfaceRegistrationResponse;
+  };
   const data = await fetchGraphQL<Data>(query, {
     userID: req.userId,
     challenge: req.challenge,
@@ -328,67 +362,80 @@ export async function finishWebAuthnRegistration(
     ipAddress: req.ipAddress ?? "",
     userAgent: req.userAgent ?? "",
   });
-  return data.finishWebAuthnRegistration;
+  return data.finishjanusfaceRegistration;
 }
 
-export type BeginWebAuthnLoginRequest = {
+export type BeginjanusfaceLoginRequest = {
   userId: string;
   ipAddress?: string;
   userAgent?: string;
 };
-export type BeginWebAuthnLoginResponse = {
+export type BeginjanusfaceLoginResponse = {
   optionsJSON: string;
   challenge: string;
   expiresAt: string;
 };
 
-export async function beginWebAuthnLogin(
-  req: BeginWebAuthnLoginRequest
-): Promise<BeginWebAuthnLoginResponse> {
+export async function beginjanusfaceLogin(
+  req: BeginjanusfaceLoginRequest
+): Promise<BeginjanusfaceLoginResponse> {
   const query = /* GraphQL */ `
-    query BeginWebAuthnLogin($userID: String!, $ipAddress: String!, $userAgent: String!) {
-      beginWebAuthnLogin(req: { userID: $userID, iPAddress: $ipAddress, userAgent: $userAgent }) {
+    query BeginjanusfaceLogin(
+      $userID: String!
+      $ipAddress: String!
+      $userAgent: String!
+    ) {
+      beginjanusfaceLogin(
+        req: { userID: $userID, iPAddress: $ipAddress, userAgent: $userAgent }
+      ) {
         optionsJSON
         challenge
         expiresAt
       }
     }
   `;
-  type Data = { beginWebAuthnLogin: BeginWebAuthnLoginResponse };
+  type Data = { beginjanusfaceLogin: BeginjanusfaceLoginResponse };
   const data = await fetchGraphQL<Data>(query, {
     userID: req.userId,
     ipAddress: req.ipAddress ?? "",
     userAgent: req.userAgent ?? "",
   });
-  return data.beginWebAuthnLogin;
+  return data.beginjanusfaceLogin;
 }
 
-export type FinishWebAuthnLoginRequest = {
+export type FinishjanusfaceLoginRequest = {
   userId: string;
   challenge: string;
   credentialJSON: string;
   ipAddress?: string;
   userAgent?: string;
 };
-export type FinishWebAuthnLoginResponse = {
+export type FinishjanusfaceLoginResponse = {
   success: boolean;
   message: string;
   sessionToken?: string;
   sessionExpiresAt?: string;
 };
 
-export async function finishWebAuthnLogin(
-  req: FinishWebAuthnLoginRequest
-): Promise<FinishWebAuthnLoginResponse> {
+export async function finishjanusfaceLogin(
+  req: FinishjanusfaceLoginRequest
+): Promise<FinishjanusfaceLoginResponse> {
   const query = /* GraphQL */ `
-    query FinishWebAuthnLogin(
-      $userID: String!,
-      $challenge: String!,
-      $credentialJSON: String!,
-      $ipAddress: String!, $userAgent: String!
+    query FinishjanusfaceLogin(
+      $userID: String!
+      $challenge: String!
+      $credentialJSON: String!
+      $ipAddress: String!
+      $userAgent: String!
     ) {
-      finishWebAuthnLogin(
-        req: { userID: $userID, challenge: $challenge, credentialJSON: $credentialJSON, iPAddress: $ipAddress, userAgent: $userAgent }
+      finishjanusfaceLogin(
+        req: {
+          userID: $userID
+          challenge: $challenge
+          credentialJSON: $credentialJSON
+          iPAddress: $ipAddress
+          userAgent: $userAgent
+        }
       ) {
         success
         message
@@ -397,7 +444,7 @@ export async function finishWebAuthnLogin(
       }
     }
   `;
-  type Data = { finishWebAuthnLogin: FinishWebAuthnLoginResponse };
+  type Data = { finishjanusfaceLogin: FinishjanusfaceLoginResponse };
   const data = await fetchGraphQL<Data>(query, {
     userID: req.userId,
     challenge: req.challenge,
@@ -405,7 +452,7 @@ export async function finishWebAuthnLogin(
     ipAddress: req.ipAddress ?? "",
     userAgent: req.userAgent ?? "",
   });
-  return data.finishWebAuthnLogin;
+  return data.finishjanusfaceLogin;
 }
 
 // Session validation
@@ -416,7 +463,9 @@ export type ValidateSessionResponse = {
   message?: string;
 };
 
-export async function validateSession(token: string): Promise<ValidateSessionResponse> {
+export async function validateSession(
+  token: string
+): Promise<ValidateSessionResponse> {
   const query = /* GraphQL */ `
     query ValidateSession($token: String!) {
       validateSession(req: { token: $token }) {
@@ -432,8 +481,8 @@ export async function validateSession(token: string): Promise<ValidateSessionRes
   return data.validateSession;
 }
 
-// Profile management
-export type UpdateUserProfileRequest = {
+// persona management
+export type UpdatepersonaRequest = {
   userId: string;
   firstName?: string;
   lastName?: string;
@@ -442,32 +491,42 @@ export type UpdateUserProfileRequest = {
   userAgent?: string;
 };
 
-export type UpdateUserProfileResponse = {
+export type UpdatepersonaResponse = {
   success: boolean;
   message?: string;
   userId?: string;
   updatedAt?: string;
 };
 
-export async function updateUserProfile(
-  req: UpdateUserProfileRequest
-): Promise<UpdateUserProfileResponse> {
-  const query = /* GraphQL */ `
-    query UpdateUserProfile(
-      $userID: String!,
-      $firstName: String!,
-      $lastName: String!,
-      $displayName: String!,
-      $ipAddress: String!,
+export async function updateUserpersona(
+  req: UpdatepersonaRequest
+): Promise<UpdatepersonaResponse> {
+  const vars = {
+    userID: req.userId,
+    firstName: req.firstName ?? "",
+    lastName: req.lastName ?? "",
+    displayName: req.displayName ?? "",
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
+  };
+
+  // Prefer persona naming
+  const queryPersona = /* GraphQL */ `
+    query UpdateUserpersona(
+      $userID: String!
+      $firstName: String!
+      $lastName: String!
+      $displayName: String!
+      $ipAddress: String!
       $userAgent: String!
     ) {
-      updateUserProfile(
+      updateUserpersona(
         req: {
-          userID: $userID,
-          firstName: $firstName,
-          lastName: $lastName,
-          displayName: $displayName,
-          iPAddress: $ipAddress,
+          userID: $userID
+          firstName: $firstName
+          lastName: $lastName
+          displayName: $displayName
+          iPAddress: $ipAddress
           userAgent: $userAgent
         }
       ) {
@@ -478,19 +537,45 @@ export async function updateUserProfile(
       }
     }
   `;
-  type Data = { updateUserProfile: UpdateUserProfileResponse };
-  const data = await fetchGraphQL<Data>(query, {
-    userID: req.userId,
-    firstName: req.firstName ?? "",
-    lastName: req.lastName ?? "",
-    displayName: req.displayName ?? "",
-    ipAddress: req.ipAddress ?? "",
-    userAgent: req.userAgent ?? "",
-  });
-  return data.updateUserProfile;
+  try {
+    type DataPersona = { updateUserpersona: UpdatepersonaResponse };
+    const data = await fetchGraphQL<DataPersona>(queryPersona, vars);
+    return data.updateUserpersona;
+  } catch {
+    // Fallback to older profile naming
+    const queryProfile = /* GraphQL */ `
+      query UpdateUserProfile(
+        $userID: String!
+        $firstName: String!
+        $lastName: String!
+        $displayName: String!
+        $ipAddress: String!
+        $userAgent: String!
+      ) {
+        updateUserProfile(
+          req: {
+            userID: $userID
+            firstName: $firstName
+            lastName: $lastName
+            displayName: $displayName
+            iPAddress: $ipAddress
+            userAgent: $userAgent
+          }
+        ) {
+          success
+          message
+          userId: userID
+          updatedAt
+        }
+      }
+    `;
+    type DataProfile = { updateUserProfile: UpdatepersonaResponse };
+    const data = await fetchGraphQL<DataProfile>(queryProfile, vars);
+    return data.updateUserProfile;
+  }
 }
 
-export type ProfileCompleteResponse = {
+export type CompletepersonaResponse = {
   complete: boolean;
   hasDisplayName: boolean;
   hasName: boolean;
@@ -498,10 +583,13 @@ export type ProfileCompleteResponse = {
   message?: string;
 };
 
-export async function isProfileComplete(userId: string): Promise<ProfileCompleteResponse> {
-  const query = /* GraphQL */ `
-    query IsProfileComplete($userID: String!) {
-      isProfileComplete(req: { userID: $userID }) {
+export async function ispersonaComplete(
+  userId: string
+): Promise<CompletepersonaResponse> {
+  const vars = { userID: userId };
+  const queryPersona = /* GraphQL */ `
+    query IspersonaComplete($userID: String!) {
+      ispersonaComplete(req: { userID: $userID }) {
         complete
         hasDisplayName
         hasName
@@ -510,7 +598,24 @@ export async function isProfileComplete(userId: string): Promise<ProfileComplete
       }
     }
   `;
-  type Data = { isProfileComplete: ProfileCompleteResponse };
-  const data = await fetchGraphQL<Data>(query, { userID: userId });
-  return data.isProfileComplete;
+  try {
+    type DataPersona = { ispersonaComplete: CompletepersonaResponse };
+    const data = await fetchGraphQL<DataPersona>(queryPersona, vars);
+    return data.ispersonaComplete;
+  } catch {
+    const queryProfile = /* GraphQL */ `
+      query IsProfileComplete($userID: String!) {
+        isProfileComplete(req: { userID: $userID }) {
+          complete
+          hasDisplayName
+          hasName
+          status
+          message
+        }
+      }
+    `;
+    type DataProfile = { isProfileComplete: CompletepersonaResponse };
+    const data = await fetchGraphQL<DataProfile>(queryProfile, vars);
+    return data.isProfileComplete;
+  }
 }
