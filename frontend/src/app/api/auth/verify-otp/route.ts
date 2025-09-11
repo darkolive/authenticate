@@ -4,11 +4,13 @@ import { normalizeRecipient, getClientIp } from "@/lib/utils";
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as VerifyOTPRequest;
+    const body = (await req.json()) as VerifyOTPRequest & { channel?: "email" | "sms" | "whatsapp" };
     if (!body?.otpCode || !body?.recipient) {
       return NextResponse.json({ error: "otpCode and recipient are required" }, { status: 400 });
     }
-    const channelType = "email"; // TODO: infer actual channel type if multiple channels are supported
+    // Map SMS/WhatsApp to phone for server normalization and cookies
+    const chan = (body.channel || "email").toLowerCase();
+    const channelType = chan === "email" ? "email" : "phone";
     const recipient = normalizeRecipient(channelType, body.recipient);
     const ipAddress = getClientIp(req);
     const userAgent = req.headers.get("user-agent") ?? "";

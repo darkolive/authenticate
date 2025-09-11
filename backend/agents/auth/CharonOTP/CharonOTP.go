@@ -13,6 +13,7 @@ import (
 
 	audit "backend/agents/audit/ThemisLog"
 	"backend/services/email"
+	twilioSvc "backend/services/twilio"
 
 	"github.com/hypermodeinc/modus/sdk/go/pkg/console"
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
@@ -28,65 +29,65 @@ type OTPRequest struct {
 // beyond a retention window. Returns the number of records deleted.
 // retentionHours <= 0 defaults to 24 hours.
 func PurgeExpiredOTPs(retentionHours int) (int, error) {
-    if retentionHours <= 0 {
-        retentionHours = 24
-    }
+	if retentionHours <= 0 {
+		retentionHours = 24
+	}
 
-    cutoff := time.Now().Add(-time.Duration(retentionHours) * time.Hour).UTC()
-    cutoffStr := cutoff.Format(time.RFC3339)
+	cutoff := time.Now().Add(-time.Duration(retentionHours) * time.Hour).UTC()
+	cutoffStr := cutoff.Format(time.RFC3339)
 
-    // Select OTPs where:
-    // - expiresAt < cutoff (expired long enough), OR
-    // - verified == true AND createdAt < cutoff, OR
-    // - used == true AND createdAt < cutoff
-    query := fmt.Sprintf(`{
+	// Select OTPs where:
+	// - expiresAt < cutoff (expired long enough), OR
+	// - verified == true AND createdAt < cutoff, OR
+	// - used == true AND createdAt < cutoff
+	query := fmt.Sprintf(`{
         q(func: type(ChannelOTP)) @filter( lt(expiresAt, "%s") OR (eq(verified, true) AND lt(createdAt, "%s")) OR (eq(used, true) AND lt(createdAt, "%s")) ) {
             uid
         }
     }`, cutoffStr, cutoffStr, cutoffStr)
 
-    result, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(query))
-    if err != nil {
-        return 0, fmt.Errorf("failed to query OTPs for purge: %w", err)
-    }
-    if result.Json == "" {
-        return 0, nil
-    }
+	result, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(query))
+	if err != nil {
+		return 0, fmt.Errorf("failed to query OTPs for purge: %w", err)
+	}
+	if result.Json == "" {
+		return 0, nil
+	}
 
-    var resp struct {
-        Q []struct{ UID string `json:"uid"` } `json:"q"`
-    }
-    if err := json.Unmarshal([]byte(result.Json), &resp); err != nil {
-        return 0, fmt.Errorf("failed to parse purge query response: %w", err)
-    }
-    if len(resp.Q) == 0 {
-        return 0, nil
-    }
+	var resp struct {
+		Q []struct{ UID string `json:"uid"` } `json:"q"`
+	}
+	if err := json.Unmarshal([]byte(result.Json), &resp); err != nil {
+		return 0, fmt.Errorf("failed to parse purge query response: %w", err)
+	}
+	if len(resp.Q) == 0 {
+		return 0, nil
+	}
 
-    var delNQuads strings.Builder
-    for _, n := range resp.Q {
-        if n.UID == "" {
-            continue
-        }
-        fmt.Fprintf(&delNQuads, "<%s> * * .\n", n.UID)
-    }
-    if delNQuads.Len() == 0 {
-        return 0, nil
-    }
+	var delNQuads strings.Builder
+	for _, n := range resp.Q {
+		if n.UID == "" {
+			continue
+		}
+		fmt.Fprintf(&delNQuads, "<%s> * * .\n", n.UID)
+	}
+	if delNQuads.Len() == 0 {
+		return 0, nil
+	}
 
-    if err := executeDelete(delNQuads.String()); err != nil {
-        return 0, err
-    }
+	if err := executeDelete(delNQuads.String()); err != nil {
+		return 0, err
+	}
 
-    // Audit and log the purge event
-    deleted := len(resp.Q)
-    logAudit("AUTHENTICATION", "OTP_PURGED", "ChannelOTP", "bulk", "INFO", map[string]interface{}{
-        "deletedCount":  deleted,
-        "retentionHours": retentionHours,
-        "cutoff":        cutoffStr,
-    })
-    console.Log(fmt.Sprintf("🧹 Purged %d ChannelOTP records (cutoff %s)", deleted, cutoffStr))
-    return deleted, nil
+	// Audit and log the purge event
+	deleted := len(resp.Q)
+	logAudit("AUTHENTICATION", "OTP_PURGED", "ChannelOTP", "bulk", "INFO", map[string]interface{}{
+		"deletedCount":  deleted,
+		"retentionHours": retentionHours,
+		"cutoff":        cutoffStr,
+	})
+	console.Log(fmt.Sprintf("🧹 Purged %d ChannelOTP records (cutoff %s)", deleted, cutoffStr))
+	return deleted, nil
 }
 
 // OTPResponse represents the response after OTP generation
@@ -283,100 +284,99 @@ func sendOTPViaEmail(recipient, otpCode string) error {
 	return nil
 }
 
-// sendOTPViaOtherChannels sends OTP via SMS, WhatsApp, or Telegram using IrisMessage
-func sendOTPViaOtherChannels(channel string, recipient, _ string) error {
-	// TODO: Implement IrisMessage integration for SMS, WhatsApp, Telegram
-	// This is a placeholder until IrisMessage agent is implemented
-	
-	// Log the attempt for debugging
-	// Debug: console.Log(fmt.Sprintf("Attempting to send OTP via %s to %s (code: %s...)", channel, recipient, otpCode[:2]))
-	
-	switch channel {
-	case "sms":
-		// TODO: Call IrisMessage SMS function
-		return fmt.Errorf("SMS channel not yet implemented for %s - waiting for IrisMessage agent", recipient)
-	case "whatsapp":
-		// TODO: Call IrisMessage WhatsApp function
-		return fmt.Errorf("WhatsApp channel not yet implemented for %s - waiting for IrisMessage agent", recipient)
-	case "telegram":
-		// TODO: Call IrisMessage Telegram function
-		return fmt.Errorf("Telegram channel not yet implemented for %s - waiting for IrisMessage agent", recipient)
-	default:
-		return fmt.Errorf("unsupported channel: %s", channel)
-	}
+// sendOTPViaOtherChannels sends OTP via SMS, WhatsApp (Twilio) or returns not supported for others
+func sendOTPViaOtherChannels(channel string, recipient, otpCode string) error {
+    switch strings.ToLower(strings.TrimSpace(channel)) {
+    case "sms":
+        return twilioSvc.SendSMSOTP(recipient, otpCode)
+    case "whatsapp":
+        return twilioSvc.SendWhatsAppOTP(recipient, otpCode)
+    case "telegram":
+        return fmt.Errorf("telegram channel not supported yet")
+    default:
+        return fmt.Errorf("unsupported channel: %s", channel)
+    }
 }
 
 // SendOTP is the main exported function to generate and send OTP
 func SendOTP(ctx context.Context, req OTPRequest) (OTPResponse, error) {
-	// Validate request
-	if req.Channel == "" {
-		return OTPResponse{}, fmt.Errorf("channel is required")
-	}
-	if req.Recipient == "" {
-		return OTPResponse{}, fmt.Errorf("recipient is required")
-	}
-	
-	// Set hardcoded default values
-	expiryMins := 5 // Fixed 5 minutes expiry
-	
-	// Generate OTP
-	otpCode, err := generateOTP()
-	if err != nil {
-		return OTPResponse{}, fmt.Errorf("failed to generate OTP: %w", err)
-	}
-	
-	// Calculate expiry time
-	expiresAt := time.Now().Add(time.Duration(expiryMins) * time.Minute)
-	
-	// Send OTP via appropriate channel FIRST (fast path)
-	var sendErr error
-	switch req.Channel {
-	case "email":
-		sendErr = sendOTPViaEmail(req.Recipient, otpCode)
-	case "sms", "whatsapp", "telegram":
-		sendErr = sendOTPViaOtherChannels(req.Channel, req.Recipient, otpCode)
-	default:
-		return OTPResponse{}, fmt.Errorf("unsupported channel: %s", req.Channel)
-	}
+    // Validate request
+    if req.Channel == "" {
+        return OTPResponse{}, fmt.Errorf("channel is required")
+    }
+    if req.Recipient == "" {
+        return OTPResponse{}, fmt.Errorf("recipient is required")
+    }
 
-	// Log send error but don't return early - allow OTP storage and graceful response
-	if sendErr != nil {
-		console.Error(fmt.Sprintf("Failed to send OTP via %s: %v", req.Channel, sendErr))
-	}
+    // Set expiry and generate code
+    expiryMins := 5
+    otpCode, err := generateOTP()
+    if err != nil {
+        return OTPResponse{}, fmt.Errorf("failed to generate OTP: %w", err)
+    }
+    expiresAt := time.Now().Add(time.Duration(expiryMins) * time.Minute)
 
-	// Store OTP in Dgraph synchronously (WASM compatible)
-	// Debug: console.Log("Starting synchronous OTP storage")
-	storageStart := time.Now()
-	otpID, storageErr := storeOTPInDgraph(req.Channel, req.Recipient, otpCode, expiresAt)
-	if storageErr != nil {
-		console.Error(fmt.Sprintf("OTP storage failed after %v: %v", time.Since(storageStart), storageErr))
-		// Use fallback ID for response even if storage fails
-		otpID = fmt.Sprintf("otp_%d", time.Now().UnixNano())
-	} else {
-		// Debug: console.Log(fmt.Sprintf("OTP storage completed in %v", time.Since(storageStart)))
-	}
+    // For audit: normalize recipient and compute channelHash as a stable objectId
+    normRecipient := normalizeRecipient(req.Channel, req.Recipient)
+    channelHash := hashString(normRecipient)
 
-	response := OTPResponse{
-		OTPID:     otpID,
-		Sent:      sendErr == nil,
-		Verified:  false, // OTP not verified yet
-		Channel:   req.Channel,
-		ExpiresAt: expiresAt,
-	}
-	
-	if sendErr != nil {
-		response.Message = fmt.Sprintf("OTP generated but failed to send: %v", sendErr)
-	} else {
-		response.Message = fmt.Sprintf("OTP sent successfully via %s", req.Channel)
-	}
-	
-	return response, nil
+    // Audit attempt
+    logAudit("AUTHENTICATION", "OTP_SEND_ATTEMPT", "ChannelOTP", channelHash, "INFO", map[string]interface{}{
+        "channel": strings.ToLower(req.Channel),
+    })
+
+    // Send via appropriate channel
+    var sendErr error
+    switch req.Channel {
+    case "email":
+        sendErr = sendOTPViaEmail(req.Recipient, otpCode)
+    case "sms", "whatsapp", "telegram":
+        sendErr = sendOTPViaOtherChannels(req.Channel, req.Recipient, otpCode)
+    default:
+        return OTPResponse{}, fmt.Errorf("unsupported channel: %s", req.Channel)
+    }
+
+    if sendErr != nil {
+        console.Error(fmt.Sprintf("Failed to send OTP via %s: %v", req.Channel, sendErr))
+        logAudit("AUTHENTICATION", "OTP_SEND_FAILED", "ChannelOTP", channelHash, "ERROR", map[string]interface{}{
+            "channel": strings.ToLower(req.Channel),
+            "error":   sendErr.Error(),
+        })
+    } else {
+        logAudit("AUTHENTICATION", "OTP_SENT", "ChannelOTP", channelHash, "INFO", map[string]interface{}{
+            "channel": strings.ToLower(req.Channel),
+        })
+    }
+
+    // Store OTP in Dgraph (synchronous)
+    storageStart := time.Now()
+    otpID, storageErr := storeOTPInDgraph(req.Channel, req.Recipient, otpCode, expiresAt)
+    if storageErr != nil {
+        console.Error(fmt.Sprintf("OTP storage failed after %v: %v", time.Since(storageStart), storageErr))
+        // Use fallback ID
+        otpID = fmt.Sprintf("otp_%d", time.Now().UnixNano())
+    }
+
+    // Build response
+    response := OTPResponse{
+        OTPID:     otpID,
+        Sent:      sendErr == nil,
+        Verified:  false,
+        Channel:   req.Channel,
+        ExpiresAt: expiresAt,
+    }
+    if sendErr != nil {
+        response.Message = fmt.Sprintf("OTP generated but failed to send: %v", sendErr)
+    } else {
+        response.Message = fmt.Sprintf("OTP sent successfully via %s", req.Channel)
+    }
+    return response, nil
 }
 
 // VerifyOTP verifies an OTP code against the database
 // Frontend should store channel value and pass it with the OTP code
 func VerifyOTP(req VerifyOTPRequest) (VerifyOTPResponse, error) {
-	ctx := context.Background()
+    ctx := context.Background()
 	
 	// Compute recipient hashes (raw and normalized-email) and OTP hash
 	rawRecipient := strings.TrimSpace(req.Recipient)

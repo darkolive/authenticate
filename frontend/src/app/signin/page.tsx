@@ -64,8 +64,11 @@ function isErrorResp(v: unknown): v is ErrorResp {
 }
 
 const emailSchema = z.object({
-  email: z.string().email(),
+  channel: z.enum(["email", "sms", "whatsapp"]),
+  recipient: z.string().min(1, "Recipient is required"),
 });
+
+type EmailFormValues = z.infer<typeof emailSchema>;
 
 const otpSchema = z.object({
   code: z.string().min(6, "Enter the 6-digit code").max(6),
@@ -82,7 +85,10 @@ type Step = "email" | "otp" | "signin" | "register" | "success";
 export default function SignInPage() {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>("email");
-  const [email, setEmail] = React.useState("");
+  const [recipient, setRecipient] = React.useState("");
+  const [channel, setChannel] = React.useState<"email" | "sms" | "whatsapp">(
+    "email"
+  );
   const [channelDID, setChannelDID] = React.useState<string | undefined>(
     undefined
   );
@@ -91,11 +97,12 @@ export default function SignInPage() {
   const [magicLoading, setMagicLoading] = React.useState(false);
 
   // Email form
-  const emailForm = useForm<z.infer<typeof emailSchema>>({
+  const emailForm = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
-    defaultValues: { email: "" },
+    defaultValues: { channel: "email", recipient: "" },
     mode: "onSubmit",
   });
+  const selectedChannel = emailForm.watch("channel");
 
   // OTP form
   const otpForm = useForm<z.infer<typeof otpSchema>>({
@@ -235,12 +242,13 @@ export default function SignInPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "email", recipient: values.email }),
+        body: JSON.stringify({ channel: values.channel, recipient: values.recipient }),
       });
       if (!res.ok)
         throw new Error((await res.json()).error || "Failed to send OTP");
       toast.success("OTP sent. Check your inbox.");
-      setEmail(values.email);
+      setRecipient(values.recipient);
+      setChannel(values.channel);
       setStep("otp");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to send OTP";
@@ -265,7 +273,7 @@ export default function SignInPage() {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ otpCode: values.code, recipient: email }),
+        body: JSON.stringify({ otpCode: values.code, recipient, channel }),
       });
       const data = (await res.json()) as VerifyResp | ErrorResp;
       if (!res.ok || isErrorResp(data))
@@ -282,8 +290,8 @@ export default function SignInPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           channelDID: v.channelDID,
-          channelType: "email",
-          recipient: email,
+          channelType: channel === "email" ? "email" : "phone",
+          recipient,
         }),
       });
       const cerb = (await cerbRes.json()) as CerberusResp | ErrorResp;
@@ -308,8 +316,8 @@ export default function SignInPage() {
       if (!channelDID) throw new Error("Missing channelDID from verification");
       const payload = {
         channelDID,
-        channelType: "email" as const,
-        recipient: email,
+        channelType: channel === "email" ? ("email" as const) : ("phone" as const),
+        recipient,
         firstName: values.firstName,
         lastName: values.lastName,
         displayName: values.displayName,
@@ -353,7 +361,7 @@ export default function SignInPage() {
       const res = await fetch("/api/auth/passwordless/send-magic-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipient: email }),
+        body: JSON.stringify({ recipient }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to send magic link");
@@ -405,21 +413,59 @@ export default function SignInPage() {
                 onSubmit={emailForm.handleSubmit(onSendOTP)}
                 className="space-y-4"
               >
-                <FormField
+                <FormField<EmailFormValues>
                   control={emailForm.control}
-                  name="email"
+                  name="channel"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>Channel</FormLabel>
+                      <FormControl>
+                        <select
+                          className="block w-full border rounded px-3 py-2"
+                          value={field.value}
+                          onChange={field.onChange}
+                        >
+                          <option value="email">Email</option>
+                          <option value="sms">SMS</option>
+                          <option value="whatsapp">WhatsApp</option>
+                        </select>
+                      </FormControl>
+                      <FormDescription>
+                        Choose how you want to receive your one-time code.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField<EmailFormValues>
+                  control={emailForm.control}
+                  name="recipient"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {selectedChannel === "email"
+                          ? "Email"
+                          : selectedChannel === "sms"
+                          ? "Phone number"
+                          : "WhatsApp phone"}
+                      </FormLabel>
                       <FormControl>
                         <Input
-                          type="email"
-                          placeholder="you@example.com"
+                          type={selectedChannel === "email" ? "email" : "tel"}
+                          placeholder={
+                            selectedChannel === "email"
+                              ? "you@example.com"
+                              : "+44 7000 000000"
+                          }
                           {...field}
                         />
                       </FormControl>
                       <FormDescription>
-                        We&apos;ll send a one-time code to this address.
+                        {selectedChannel === "email"
+                          ? "We’ll send a one-time code to this address."
+                          : selectedChannel === "sms"
+                          ? "We’ll send a one-time code by SMS to this number."
+                          : "We’ll send a one-time code to this WhatsApp number."}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -468,7 +514,7 @@ export default function SignInPage() {
                         </InputOTP>
                       </FormControl>
                       <FormDescription>
-                        We sent a code to {email}. It expires soon.
+                        We sent a code to {recipient} via {channel}. It expires soon.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -487,7 +533,7 @@ export default function SignInPage() {
                     variant="secondary"
                     onClick={() => setStep("email")}
                   >
-                    Change email
+                    Change recipient
                   </Button>
                 </div>
               </form>

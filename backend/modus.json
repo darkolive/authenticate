@@ -19,6 +19,18 @@
         "Authorization": "Bearer {{API_KEY}}",
         "Content-Type": "application/json"
       }
+    },
+    "twilio": {
+      "type": "http",
+      "baseUrl": "https://api.twilio.com/2010-04-01/",
+      "headers": {
+        "Authorization": "Basic {{TWILIO_BASIC_AUTH}}",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "X-Account-Sid": "{{TWILIO_ACCOUNT_SID}}",
+        "X-Messaging-Service-Sid": "{{TWILIO_MESSAGING_SERVICE_SID}}",
+        "X-Default-Country-Code": "{{TWILIO_DEFAULT_COUNTRY_CODE}}"
+      }
     }
   }
 }
