@@ -9,6 +9,8 @@ type UserChannels {
      primary
      createdAt
      lastUsedAt
+     value_enc
+     value_bi
      tenantId
  }
 
@@ -18,4 +20,6 @@ channelKey: string @index(exact) @upsert .  # userId|channelType|channelHash com
 channelUnique: string @index(exact) @upsert .  # tenantId|channelType|channelHash composite (tenant optional)
 primary: bool @index(bool) .
 lastUsedAt: datetime @index(hour) .
+value_enc: string .
+value_bi: string @index(exact) .
 tenantId: string @index(exact) .

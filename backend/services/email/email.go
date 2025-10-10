@@ -77,11 +77,15 @@ func init() {
 
 // SetPrimaryProvider allows switching the primary email provider
 func SetPrimaryProvider(provider EmailProvider) {
+	defaultService.mutex.Lock()
+	defer defaultService.mutex.Unlock()
 	defaultService.primaryProvider = provider
 }
 
 // SetFallbackProvider sets a fallback provider for redundancy
 func SetFallbackProvider(provider EmailProvider) {
+	defaultService.mutex.Lock()
+	defer defaultService.mutex.Unlock()
 	defaultService.fallbackProvider = provider
 	defaultService.enableFallback = true
 }
@@ -113,6 +117,8 @@ func SendWelcomeEmailAsync(to, userName string) (*EmailResponse, error) {
 
 // GetProviderInfo returns information about the current email provider
 func GetProviderInfo() string {
+	defaultService.mutex.RLock()
+	defer defaultService.mutex.RUnlock()
 	return defaultService.primaryProvider.GetProviderName()
 }
 

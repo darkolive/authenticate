@@ -29,3 +29,13 @@ avatar: string .
 preferences: string .     # JSON-encoded free-form preferences (e.g., {"theme":"dark"})
 language: string @index(exact) .
 timezone: string @index(exact) .
+
+# Encrypted identity fields (stored as base64 ciphertext via Vault transit). Not indexed.
+firstName_enc: string .
+lastName_enc: string .
+displayName_enc: string .
+
+# Blind indexes for equality search/dedup (HMAC-SHA-256 of normalized values). Indexed exact.
+firstName_bi: string @index(exact) .
+lastName_bi: string @index(exact) .
+displayName_bi: string @index(exact) .

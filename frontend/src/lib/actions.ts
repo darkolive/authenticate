@@ -11,6 +11,203 @@ if (!GRAPHQL_URL) {
     "[actions] BACKEND_GRAPHQL_URL is not set. Set it in .env.local"
   );
 }
+
+// Decrypt persona (self-service)
+export type GetUserPIIResponse = {
+  firstName?: string;
+  lastName?: string;
+  displayName?: string;
+  firstName_enc?: string;
+  lastName_enc?: string;
+  displayName_enc?: string;
+  message?: string;
+};
+
+export async function getUserPII(userId: string): Promise<GetUserPIIResponse> {
+  const query = /* GraphQL */ `
+    query GetUserPII($userID: String!) {
+      getUserPII(req: { userID: $userID }) {
+        firstName
+        lastName
+        displayName
+        firstName_enc
+        lastName_enc
+        displayName_enc
+        message
+      }
+    }
+  `;
+  type Data = { getUserPII: GetUserPIIResponse };
+  const data = await fetchGraphQL<Data>(query, { userID: userId });
+  return data.getUserPII;
+}
+
+// List passkeys
+export type PasskeyItem = {
+  credentialId: string;
+  addedAt?: string;
+  revoked: boolean;
+  revokedAt?: string;
+  transports?: string;
+};
+
+export type ListPasskeysResponse = {
+  items: PasskeyItem[];
+  message?: string;
+};
+
+export async function listPasskeys(userId: string): Promise<ListPasskeysResponse> {
+  const query = /* GraphQL */ `
+    query ListPasskeys($userID: String!) {
+      listjanusfacePasskeys(req: { userID: $userID }) {
+        items {
+          credentialId
+          addedAt
+          revoked
+          revokedAt
+          transports
+        }
+        message
+      }
+    }
+  `;
+  type Data = { listjanusfacePasskeys: ListPasskeysResponse };
+  const data = await fetchGraphQL<Data>(query, { userID: userId });
+  return data.listjanusfacePasskeys;
+}
+
+// Passkey management (janusface)
+export type RevokePasskeysRequest = {
+  userId: string;
+  credentialId?: string;
+  reason?: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
+
+export type RevokePasskeysResponse = {
+  success: boolean;
+  message?: string;
+  count: number;
+};
+
+export async function revokePasskeys(
+  req: RevokePasskeysRequest
+): Promise<RevokePasskeysResponse> {
+  const query = /* GraphQL */ `
+    query RevokePasskeys(
+      $userID: String!
+      $credentialId: String!
+      $reason: String!
+      $ipAddress: String!
+      $userAgent: String!
+    ) {
+      revokejanusfacePasskeys(
+        req: {
+          userID: $userID
+          credentialId: $credentialId
+          reason: $reason
+          iPAddress: $ipAddress
+          userAgent: $userAgent
+        }
+      ) {
+        success
+        message
+        count
+      }
+    }
+  `;
+  type Data = { revokejanusfacePasskeys: RevokePasskeysResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    credentialId: req.credentialId ?? "",
+    reason: req.reason ?? "",
+    ipAddress: req.ipAddress ?? "",
+    userAgent: req.userAgent ?? "",
+  });
+  return data.revokejanusfacePasskeys;
+}
+
+// Merge candidates
+export type MergeCandidateItem = {
+  uid: string;
+  candidateUser: string;
+  candidateDID: string;
+  channelType: string;
+  channelHash: string;
+  signals: string[];
+  score: number;
+  status: string;
+  createdAt?: string;
+};
+
+export type ListMergeCandidatesResponse = {
+  items: MergeCandidateItem[];
+  message?: string;
+};
+
+export async function listMergeCandidates(
+  userId: string
+): Promise<ListMergeCandidatesResponse> {
+  const query = /* GraphQL */ `
+    query ListMergeCandidates($userID: String!) {
+      listMergeCandidates(req: { userID: $userID }) {
+        items {
+          uid: uID
+          candidateUser
+          candidateDID
+          channelType
+          channelHash
+          signals
+          score
+          status
+          createdAt
+        }
+        message
+      }
+    }
+  `;
+  type Data = { listMergeCandidates: ListMergeCandidatesResponse };
+  const data = await fetchGraphQL<Data>(query, { userID: userId });
+  return data.listMergeCandidates;
+}
+
+export type ConfirmMergeCandidateRequest = {
+  mergeCandidateUID: string;
+  decision: "confirm" | "dismiss";
+  userId: string;
+};
+
+export type ConfirmMergeCandidateResponse = {
+  success: boolean;
+  message?: string;
+};
+
+export async function confirmMergeCandidate(
+  req: ConfirmMergeCandidateRequest
+): Promise<ConfirmMergeCandidateResponse> {
+  const query = /* GraphQL */ `
+    query ConfirmMergeCandidate(
+      $mergeCandidateUID: String!
+      $decision: String!
+      $userID: String!
+    ) {
+      confirmMergeCandidate(
+        req: { mergeCandidateUID: $mergeCandidateUID, decision: $decision, userID: $userID }
+      ) {
+        success
+        message
+      }
+    }
+  `;
+  type Data = { confirmMergeCandidate: ConfirmMergeCandidateResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    mergeCandidateUID: req.mergeCandidateUID,
+    decision: req.decision,
+    userID: req.userId,
+  });
+  return data.confirmMergeCandidate;
+}
 if (!MODUS_API_KEY) {
   console.warn("[actions] MODUS_API_KEY is not set. Set it in .env.local");
 }
@@ -46,6 +243,52 @@ export type VerifyOTPResponse = {
   channelDID?: string;
 };
 
+export type LinkChannelStartRequest = {
+  userId: string;
+  channelType: "email" | "sms" | "whatsapp";
+  value: string;
+};
+
+export type LinkChannelStartResponse = {
+  success: boolean;
+  message?: string;
+  linkId?: string;
+  challengeType?: string;
+  destination?: string;
+  expiresAt?: string;
+};
+
+export type LinkChannelConfirmRequest = {
+  userId: string;
+  channelType: "email" | "sms" | "whatsapp";
+  value: string;
+  otpCode: string;
+};
+
+export type LinkChannelConfirmResponse = {
+  success: boolean;
+  message?: string;
+  channelUID?: string;
+  clusterUID?: string;
+};
+
+// Linked channels
+export type LinkedChannel = {
+  uid: string;
+  channelType: string;
+  verified: boolean;
+  normalizedValue: string;
+  provider?: string;
+  subject?: string;
+  lastVerifiedAt?: string;
+};
+
+export type GetLinkedChannelsResponse = {
+  clusterUID?: string;
+  channels: LinkedChannel[];
+  message?: string;
+};
+
 export type CerberusGateRequest = {
   channelDID?: string;
   channelType: "email" | "phone";
@@ -62,6 +305,10 @@ export type CerberusGateResponse = {
   nextStep: string;
   message?: string;
   auditEventId?: string;
+  // Optional merge hints (if backend supports)
+  mergeCandidate?: boolean;
+  mergeScore?: number;
+  mergeSignals?: string[];
 };
 
 export type UserRegistrationRequest = {
@@ -87,6 +334,9 @@ export type UserRegistrationResponse = {
   createdAt: string;
 };
 
+type GraphQLErrorItem = { message?: string };
+type GraphQLResponse<T> = { data?: T; errors?: GraphQLErrorItem[]; error?: string };
+
 async function fetchGraphQL<T>(
   query: string,
   variables?: Record<string, unknown>
@@ -99,8 +349,10 @@ async function fetchGraphQL<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (MODUS_API_KEY) {
-    headers.Authorization = `Bearer ${MODUS_API_KEY}`;
+  // Only attach Authorization if the token looks like a JWT (three segments)
+  const token = (MODUS_API_KEY || "").trim();
+  if (token && token.split(".").length === 3) {
+    headers.Authorization = `Bearer ${token}`;
   }
   const res = await fetch(GRAPHQL_URL, {
     method: "POST",
@@ -108,12 +360,27 @@ async function fetchGraphQL<T>(
     body: JSON.stringify({ query, variables }),
     cache: "no-store",
   });
-  const json = await res.json();
-  if (!res.ok || json.errors) {
-    const err = json.errors?.[0]?.message || res.statusText;
-    throw new Error(err);
+
+  // Read raw text first for better diagnostics if JSON parsing fails
+  const raw = await res.text();
+  let json: unknown;
+  try {
+    json = raw ? JSON.parse(raw) : {};
+  } catch {
+    const snippet = raw?.slice(0, 300) || "<empty body>";
+    const ct = res.headers.get("content-type") || "";
+    throw new Error(
+      `Backend GraphQL returned non-JSON (status ${res.status}) [${ct}]: ${snippet}`
+    );
   }
-  return json.data as T;
+
+  const parsed = json as GraphQLResponse<T>;
+  if (!res.ok || parsed.errors || parsed.data == null) {
+    const snippet = raw?.slice(0, 300) || "<empty body>";
+    const err = parsed.errors?.[0]?.message || parsed.error || res.statusText || "No data returned from GraphQL";
+    throw new Error(`${err} :: ${snippet}`);
+  }
+  return parsed.data as T;
 }
 
 export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
@@ -129,11 +396,14 @@ export async function sendOTP(req: OTPRequest): Promise<OTPResponse> {
       }
     }
   `;
-  type Data = { sendOTP: OTPResponse };
+  type Data = { sendOTP?: OTPResponse };
   const data = await fetchGraphQL<Data>(query, {
     channel: req.channel,
     recipient: req.recipient,
   });
+  if (!data || !data.sendOTP) {
+    throw new Error("GraphQL response missing sendOTP field");
+  }
   return data.sendOTP;
 }
 
@@ -157,6 +427,115 @@ export async function verifyOTP(
     recipient: req.recipient,
   });
   return data.verifyOTP;
+}
+
+export async function linkChannelStart(
+  req: LinkChannelStartRequest
+): Promise<LinkChannelStartResponse> {
+  const query = /* GraphQL */ `
+    query LinkChannelStart($userID: String!, $channelType: String!, $value: String!) {
+      linkChannelStart(req: { userID: $userID, channelType: $channelType, value: $value }) {
+        success
+        message
+        linkId: linkID
+        challengeType
+        destination
+        expiresAt
+      }
+    }
+  `;
+  type Data = { linkChannelStart: LinkChannelStartResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    channelType: req.channelType,
+    value: req.value,
+  });
+  return data.linkChannelStart;
+}
+
+export async function linkChannelConfirm(
+  req: LinkChannelConfirmRequest
+): Promise<LinkChannelConfirmResponse> {
+  const query = /* GraphQL */ `
+    query LinkChannelConfirm(
+      $userID: String!,
+      $channelType: String!,
+      $value: String!,
+      $oTPCode: String!,
+      $provider: String!,
+      $subject: String!
+    ) {
+      linkChannelConfirm(
+        req: { userID: $userID, channelType: $channelType, value: $value, oTPCode: $oTPCode, provider: $provider, subject: $subject }
+      ) {
+        success
+        message
+        channelUID
+        clusterUID
+      }
+    }
+  `;
+  type Data = { linkChannelConfirm: LinkChannelConfirmResponse };
+  const data = await fetchGraphQL<Data>(query, {
+    userID: req.userId,
+    channelType: req.channelType,
+    value: req.value,
+    oTPCode: req.otpCode,
+    provider: "",
+    subject: "",
+  });
+  return data.linkChannelConfirm;
+}
+
+export async function getLinkedChannels(
+  userId: string
+): Promise<GetLinkedChannelsResponse> {
+  // Primary: try getLinkedChannels
+  const queryPrimary = /* GraphQL */ `
+    query GetLinkedChannels($userID: String!) {
+      getLinkedChannels(req: { userID: $userID }) {
+        clusterUID
+        channels {
+          uid: uID
+          channelType
+          verified
+          normalizedValue
+          provider
+          subject
+          lastVerifiedAt
+        }
+        message
+      }
+    }
+  `;
+  const variables = { userID: userId } as const;
+  try {
+    type DataPrimary = { getLinkedChannels: GetLinkedChannelsResponse };
+    const data = await fetchGraphQL<DataPrimary>(queryPrimary, variables);
+    return data.getLinkedChannels;
+  } catch {
+    // Fallback: some runtimes expose this resolver as 'linkedChannels'
+    const queryFallback = /* GraphQL */ `
+      query LinkedChannels($userID: String!) {
+        linkedChannels(req: { userID: $userID }) {
+          clusterUID
+          channels {
+            uid: uID
+            channelType
+            verified
+            normalizedValue
+            provider
+            subject
+            lastVerifiedAt
+          }
+          message
+        }
+      }
+    `;
+    type DataFallback = { linkedChannels: GetLinkedChannelsResponse };
+    const data = await fetchGraphQL<DataFallback>(queryFallback, variables);
+    return data.linkedChannels;
+  }
 }
 
 export async function registerUser(
@@ -222,7 +601,16 @@ export async function registerUser(
 export async function cerberusGate(
   req: CerberusGateRequest
 ): Promise<CerberusGateResponse> {
-  const query = /* GraphQL */ `
+  const vars = {
+    channelDID: req.channelDID,
+    channelType: req.channelType,
+    recipient: req.recipient,
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
+  } as const;
+
+  // Primary: request merge fields if backend supports them
+  const queryWithMerge = /* GraphQL */ `
     query CerberusGate(
       $channelDID: String!
       $channelType: String!
@@ -246,18 +634,49 @@ export async function cerberusGate(
         nextStep
         message
         auditEventId: auditEventID
+        mergeCandidate
+        mergeScore
+        mergeSignals
       }
     }
   `;
-  type Data = { cerberusGate: CerberusGateResponse };
-  const data = await fetchGraphQL<Data>(query, {
-    channelDID: req.channelDID,
-    channelType: req.channelType,
-    recipient: req.recipient,
-    ipAddress: req.ipAddress,
-    userAgent: req.userAgent,
-  });
-  return data.cerberusGate;
+  try {
+    type Data = { cerberusGate: CerberusGateResponse };
+    const data = await fetchGraphQL<Data>(queryWithMerge, vars);
+    return data.cerberusGate;
+  } catch {
+    // Fallback: legacy backend without merge fields
+    const queryLegacy = /* GraphQL */ `
+      query CerberusGate(
+        $channelDID: String!
+        $channelType: String!
+        $recipient: String!
+        $ipAddress: String!
+        $userAgent: String!
+      ) {
+        cerberusGate(
+          req: {
+            channelDID: $channelDID
+            channelType: $channelType
+            recipient: $recipient
+            iPAddress: $ipAddress
+            userAgent: $userAgent
+          }
+        ) {
+          userExists
+          action
+          userId: userID
+          availableMethods
+          nextStep
+          message
+          auditEventId: auditEventID
+        }
+      }
+    `;
+    type DataLegacy = { cerberusGate: CerberusGateResponse };
+    const data = await fetchGraphQL<DataLegacy>(queryLegacy, vars);
+    return data.cerberusGate;
+  }
 }
 
 // janusface actions

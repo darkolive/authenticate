@@ -37,7 +37,7 @@ func (m *MailerSendProvider) SendEmail(req EmailRequest) (*EmailResponse, error)
 	payload := map[string]interface{}{
 		"from": map[string]string{
 			"email": req.From,
-			"name":  "DO Study Platform",
+			"name":  "Dark Olive CIC",
 		},
 		"to": []map[string]string{
 			{

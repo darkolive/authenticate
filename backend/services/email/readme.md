@@ -1,6 +1,6 @@
 # Email Service
 
-This package centralizes email sending and provider integrations for the DO Study platform.
+This package centralizes email sending and provider integrations for the Dark Olive CIC platform.
 
 ## Architecture
 
@@ -17,6 +17,7 @@ This package centralizes email sending and provider integrations for the DO Stud
 ## Usage
 
 Preferred (from agents):
+
 ```go
 import "backend/services/email"
 
@@ -25,7 +26,7 @@ resp, err := email.SendOTPEmail("user@example.com", "123456")
 
 // Send custom email
 resp, err := email.SendEmail(email.EmailRequest{
-    To:         "user@example.com",
+    To:         "info@darkolive.co.uk",
     From:       email.DefaultFromEmail,
     Subject:    "Your Subject",
     TemplateID: "template-id",
@@ -34,6 +35,7 @@ resp, err := email.SendEmail(email.EmailRequest{
 ```
 
 HermesMailer agent delegation:
+
 ```go
 import hermes "backend/agents/communication/HermesMailer"
 

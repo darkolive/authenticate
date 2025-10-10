@@ -1,15 +1,16 @@
 package Persona
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"strings"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "strings"
+    "time"
 
-	audit "backend/agents/audit/ThemisLog"
+    audit "backend/agents/audit/ThemisLog"
+    vcrypto "backend/services/vault"
 
-	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
+    "github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
 // UpdatepersonaRequest contains persona fields to persist for a user
@@ -56,51 +57,81 @@ func UpdateUserpersona(_ context.Context, req UpdatepersonaRequest) (Updateperso
         return UpdatepersonaResponse{Success: false, Message: "user not found"}, nil
     }
 
-    // Fetch pre-update persona flags to compare and include in audit details
-    var beforeDisplayName, beforeName string
+    // Fetch pre-update persona flags to compare and include in audit details (encrypted presence only)
+    var beforeHasDisplayName, beforeHasName bool
     {
         q := fmt.Sprintf(`{
         u(func: uid(%s)) {
-            displayName
-            name
+            firstName_enc
+            lastName_enc
+            displayName_enc
         }
     }`, uid)
         res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
         if qerr == nil && res.Json != "" {
             var parsed struct {
                 U []struct {
-                    DisplayName string `json:"displayName"`
-                    Name        string `json:"name"`
+                    FirstNameEnc   string `json:"firstName_enc"`
+                    LastNameEnc    string `json:"lastName_enc"`
+                    DisplayNameEnc string `json:"displayName_enc"`
                 } `json:"u"`
             }
             _ = json.Unmarshal([]byte(res.Json), &parsed)
             if len(parsed.U) > 0 {
-                beforeDisplayName = strings.TrimSpace(parsed.U[0].DisplayName)
-                beforeName = strings.TrimSpace(parsed.U[0].Name)
+                beforeHasDisplayName = strings.TrimSpace(parsed.U[0].DisplayNameEnc) != ""
+                // name completeness if any of first/last present
+                if strings.TrimSpace(parsed.U[0].FirstNameEnc) != "" || strings.TrimSpace(parsed.U[0].LastNameEnc) != "" {
+                    beforeHasName = true
+                }
             }
         }
     }
-    beforeHasDN := beforeDisplayName != ""
-    beforeHasNM := beforeName != ""
+    beforeHasDN := beforeHasDisplayName
+    beforeHasNM := beforeHasName
     beforeComplete := beforeHasDN || beforeHasNM
 
-    fullName := strings.TrimSpace(strings.TrimSpace(req.FirstName) + " " + strings.TrimSpace(req.LastName))
     updatedAt := time.Now().UTC().Format(time.RFC3339)
     displayNameTrim := strings.TrimSpace(req.DisplayName)
+    firstTrim := strings.TrimSpace(req.FirstName)
+    lastTrim := strings.TrimSpace(req.LastName)
+
+    // Normalize for blind index (lowercase + trim)
+    norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
     // Build N-Quads update for existing user node
     nquads := fmt.Sprintf("<%s> <updatedAt> %q^^<http://www.w3.org/2001/XMLSchema#dateTime> .", uid, updatedAt)
     updatedFields := []string{}
-    if fullName != "" {
-        nquads += fmt.Sprintf("\n<%s> <name> %q .", uid, fullName)
-        if fullName != beforeName {
-            updatedFields = append(updatedFields, "name")
+
+    // Encrypt and store persona fields (no plaintext)
+    if firstTrim != "" {
+        if ct, e := vcrypto.Encrypt("pii-identity", []byte(firstTrim)); e == nil {
+            nquads += fmt.Sprintf("\n<%s> <firstName_enc> %q .", uid, ct)
+            if bi, herr := vcrypto.HMAC("pii-identity-hmac", []byte(norm(firstTrim))); herr == nil {
+                nquads += fmt.Sprintf("\n<%s> <firstName_bi> %q .", uid, bi)
+            }
+            updatedFields = append(updatedFields, "firstName_enc")
+        } else {
+            // best-effort: do not fail hard, but include error in message later if all fields fail
+        }
+    }
+    if lastTrim != "" {
+        if ct, e := vcrypto.Encrypt("pii-identity", []byte(lastTrim)); e == nil {
+            nquads += fmt.Sprintf("\n<%s> <lastName_enc> %q .", uid, ct)
+            if bi, herr := vcrypto.HMAC("pii-identity-hmac", []byte(norm(lastTrim))); herr == nil {
+                nquads += fmt.Sprintf("\n<%s> <lastName_bi> %q .", uid, bi)
+            }
+            updatedFields = append(updatedFields, "lastName_enc")
+        } else {
         }
     }
     if displayNameTrim != "" {
-        nquads += fmt.Sprintf("\n<%s> <displayName> %q .", uid, displayNameTrim)
-        if displayNameTrim != beforeDisplayName {
-            updatedFields = append(updatedFields, "displayName")
+        if ct, e := vcrypto.Encrypt("pii-identity", []byte(displayNameTrim)); e == nil {
+            nquads += fmt.Sprintf("\n<%s> <displayName_enc> %q .", uid, ct)
+            if bi, herr := vcrypto.HMAC("pii-identity-hmac", []byte(norm(displayNameTrim))); herr == nil {
+                nquads += fmt.Sprintf("\n<%s> <displayName_bi> %q .", uid, bi)
+            }
+            updatedFields = append(updatedFields, "displayName_enc")
+        } else {
         }
     }
 
@@ -111,13 +142,9 @@ func UpdateUserpersona(_ context.Context, req UpdatepersonaRequest) (Updateperso
 
     // Compute after-update flags for audit (assume fields unchanged if not set)
     afterHasDN := beforeHasDN
-    if displayNameTrim != "" {
-        afterHasDN = true
-    }
+    if displayNameTrim != "" { afterHasDN = true }
     afterHasNM := beforeHasNM
-    if fullName != "" {
-        afterHasNM = true
-    }
+    if firstTrim != "" || lastTrim != "" { afterHasNM = true }
     afterComplete := afterHasDN || afterHasNM
 
     // Emit audit event (best-effort; failures do not affect response)
@@ -162,8 +189,9 @@ func IspersonaComplete(req CompletepersonaRequest) (CompletepersonaResponse, err
 
     q := fmt.Sprintf(`{
         u(func: uid(%s)) {
-            displayName
-            name
+            displayName_enc
+            firstName_enc
+            lastName_enc
             status
         }
     }`, uid)
@@ -175,9 +203,10 @@ func IspersonaComplete(req CompletepersonaRequest) (CompletepersonaResponse, err
 
     var parsed struct {
         U []struct {
-            DisplayName string `json:"displayName"`
-            Name        string `json:"name"`
-            Status      string `json:"status"`
+            DisplayNameEnc string `json:"displayName_enc"`
+            FirstNameEnc   string `json:"firstName_enc"`
+            LastNameEnc    string `json:"lastName_enc"`
+            Status         string `json:"status"`
         } `json:"u"`
     }
     if res.Json != "" {
@@ -187,10 +216,8 @@ func IspersonaComplete(req CompletepersonaRequest) (CompletepersonaResponse, err
         return CompletepersonaResponse{Complete: false, Message: "user not found"}, nil
     }
 
-    dn := strings.TrimSpace(parsed.U[0].DisplayName)
-    nm := strings.TrimSpace(parsed.U[0].Name)
-    hasDN := dn != ""
-    hasNM := nm != ""
+    hasDN := strings.TrimSpace(parsed.U[0].DisplayNameEnc) != ""
+    hasNM := strings.TrimSpace(parsed.U[0].FirstNameEnc) != "" || strings.TrimSpace(parsed.U[0].LastNameEnc) != ""
     complete := hasDN || hasNM
 
     return CompletepersonaResponse{

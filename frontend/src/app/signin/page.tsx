@@ -47,6 +47,10 @@ type CerberusResp = {
   availableMethods: string[];
   nextStep: string;
   message?: string;
+  // Optional merge hints
+  mergeCandidate?: boolean;
+  mergeScore?: number;
+  mergeSignals?: string[];
 };
 
 type RegisterResp = {
@@ -303,6 +307,10 @@ export default function SignInPage() {
       const c = cerb as CerberusResp;
       if (c.userId) setUserId(c.userId);
       if (c.message) toast.message(c.message);
+      if (c.mergeCandidate) {
+        const score = typeof c.mergeScore === "number" ? ` (score ${c.mergeScore})` : "";
+        toast.message(`We detected a possible account link${score}. You'll still verify control of any new channels via OTP.`);
+      }
       // Immediately attempt biometric flow based on Cerberus decision
       await attemptPasskeyFlow(c.action);
     } catch (e) {

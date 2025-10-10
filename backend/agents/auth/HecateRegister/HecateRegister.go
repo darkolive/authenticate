@@ -11,6 +11,7 @@ import (
 	"time"
 
 	audit "backend/agents/audit/ThemisLog"
+	vcrypto "backend/services/vault"
 
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
@@ -265,6 +266,17 @@ func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []s
 	chKey := makeChannelKey(userID, req.ChannelType, chHash)
 	chUnique := fmt.Sprintf("%s|%s", req.ChannelType, chHash)
 
+	// Encrypt channel value and compute blind index (for equality lookups)
+	var valueEnc, valueBI string
+	if normRecipient != "" {
+		if ct, err := vcrypto.Encrypt("pii-contact", []byte(normRecipient)); err == nil {
+			valueEnc = ct
+		}
+		if h, err := vcrypto.HMAC("pii-contact-hmac", []byte(normRecipient)); err == nil {
+			valueBI = h
+		}
+	}
+
 	// Build N-Quads for User and UserChannels aligned with schema
 	nquads := fmt.Sprintf(`
 		_:user <dgraph.type> "User" .
@@ -296,6 +308,13 @@ func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []s
 		now.Format(time.RFC3339),
 		now.Format(time.RFC3339),
 	)
+
+	if valueEnc != "" {
+		nquads += fmt.Sprintf("\n        _:channel <value_enc> %q .", valueEnc)
+	}
+	if valueBI != "" {
+		nquads += fmt.Sprintf("\n        _:channel <value_bi> %q .", valueBI)
+	}
 
 	// Link roles if provided
 	for _, rid := range roleUIDs {

@@ -1,13 +1,13 @@
 package main
 
 import (
-	cerberus "backend/agents/auth/CerberusMFA"
-	charonotp "backend/agents/auth/CharonOTP"
-	hecateregister "backend/agents/auth/HecateRegister"
-	janusface "backend/agents/auth/JanusFace"
-	persona "backend/agents/profile/Persona"
-	sessions "backend/agents/sessions/ChronosSession"
-	"context"
+    cerberus "backend/agents/auth/CerberusMFA"
+    charonotp "backend/agents/auth/CharonOTP"
+    hecateregister "backend/agents/auth/HecateRegister"
+    janusface "backend/agents/auth/JanusFace"
+    persona "backend/agents/profile/Persona"
+    sessions "backend/agents/sessions/ChronosSession"
+    "context"
 )
 
 // SendOTP is the API entrypoint (called by generated glue) and delegates to the CharonOTP agent.
@@ -57,6 +57,24 @@ func IspersonaComplete(req *persona.CompletepersonaRequest) persona.Completepers
     resp, err := persona.IspersonaComplete(*req)
     if err != nil {
         return persona.CompletepersonaResponse{Complete: false, Message: err.Error()}
+    }
+    return resp
+}
+
+// GetUserPII returns decrypted persona fields for the signed-in user (server-side only).
+// GraphQL: getUserPII(req: GetPIIRequest): GetPIIResponse
+func GetUserPII(req *persona.GetPIIRequest) persona.GetPIIResponse {
+    if req == nil {
+        r := persona.GetPIIRequest{}
+        resp, err := persona.GetUserPII(context.Background(), r)
+        if err != nil {
+            return persona.GetPIIResponse{Message: err.Error()}
+        }
+        return resp
+    }
+    resp, err := persona.GetUserPII(context.Background(), *req)
+    if err != nil {
+        return persona.GetPIIResponse{Message: err.Error()}
     }
     return resp
 }
