@@ -11,7 +11,7 @@ import (
 	"time"
 
 	audit "backend/agents/audit/ThemisLog"
-	vcrypto "backend/services/vault"
+	aegis "backend/services/aegis"
 
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
@@ -49,24 +49,9 @@ type UserRegistrationResponse struct {
 	
 	// Identity verification status
 	IdentityCheckID string `json:"identityCheckId,omitempty"`
-	
 	// Audit information
 	AuditEventID    string    `json:"auditEventId,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
-}
-
-// PIITokenizationRequest for internal PII handling
-type PIITokenizationRequest struct {
-	FirstName   string `json:"firstName"`
-	LastName    string `json:"lastName"`
-	Email       string `json:"email,omitempty"`
-	Phone       string `json:"phone,omitempty"`
-}
-
-// PIITokenizationResponse from internal/pii service
-type PIITokenizationResponse struct {
-	Tokens map[string]string `json:"tokens"`
-	Status string           `json:"status"`
 }
 
 // AuditEvent for ISO compliance
@@ -109,26 +94,202 @@ func makeChannelKey(userID, channelType, channelHash string) string {
 	return fmt.Sprintf("%s|%s|%s", userID, channelType, channelHash)
 }
 
-// tokenizePII handles PII tokenization via internal/pii service
-func tokenizePII(req PIITokenizationRequest) (*PIITokenizationResponse, error) {
-	// TODO: Integrate with internal/pii service for ISO-compliant tokenization
-	// For now, return placeholder tokens
-	tokens := map[string]string{
-		"firstName": fmt.Sprintf("tok_fn_%d", time.Now().UnixNano()),
-		"lastName":  fmt.Sprintf("tok_ln_%d", time.Now().UnixNano()),
+// createUserInDgraph stores the new user record in Dgraph
+func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []string) error {
+	// Validate channel type
+	switch req.ChannelType {
+	case "email", "phone":
+		// ok
+	default:
+		return fmt.Errorf("unsupported channel type: %s", req.ChannelType)
+	}
+
+	now := time.Now()
+	normRecipient := normalizeRecipient(req.ChannelType, req.Recipient)
+	chHash := hashString(normRecipient)
+	chKey := makeChannelKey(userID, req.ChannelType, chHash)
+	chUnique := fmt.Sprintf("%s|%s", req.ChannelType, chHash)
+
+    // Encrypt channel value and compute blind index (for equality lookups)
+    var valueEnc, valueBI string
+    if normRecipient != "" {
+        if ct, err := aegis.Encrypt("pii-contact", []byte(normRecipient)); err == nil {
+            valueEnc = ct
+        }
+        if h, err := aegis.HMAC("pii-contact-hmac", []byte(normRecipient)); err == nil {
+            valueBI = h
+        }
+    }
+
+	// Build N-Quads for User and UserChannels aligned with schema
+	nquads := fmt.Sprintf(`
+		_:user <dgraph.type> "User" .
+		_:user <did> %q .
+		_:user <status> "active" .
+		_:user <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+		_:user <updatedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+
+		_:channel <dgraph.type> "UserChannels" .
+		_:channel <user> _:user .
+		_:channel <userId> %q .
+		_:channel <channelType> %q .
+		_:channel <channelHash> %q .
+		_:channel <channelKey> %q .
+		_:channel <channelUnique> %q .
+		_:channel <verified> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+		_:channel <primary> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+		_:channel <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+		_:channel <lastUsedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+	`,
+		userID,
+		now.Format(time.RFC3339),
+		now.Format(time.RFC3339),
+		userID,
+		req.ChannelType,
+		chHash,
+		chKey,
+		chUnique,
+		now.Format(time.RFC3339),
+		now.Format(time.RFC3339),
+	)
+
+	if valueEnc != "" {
+		nquads += fmt.Sprintf("\n        _:channel <value_enc> %q .", valueEnc)
+	}
+	if valueBI != "" {
+		nquads += fmt.Sprintf("\n        _:channel <value_bi> %q .", valueBI)
+	}
+
+	// Link roles if provided
+	for _, rid := range roleUIDs {
+		nquads += fmt.Sprintf("\n        _:user <roles> <%s> .\n", rid)
+	}
+
+	// Execute mutation using Dgraph SDK
+	mutationObj := dgraph.NewMutation().WithSetNquads(nquads)
+	result, err := dgraph.ExecuteMutations("dgraph", mutationObj)
+	if err != nil {
+		return fmt.Errorf("failed to create user in Dgraph: %v", err)
+	}
+
+	// Optionally use returned UIDs
+	if len(result.Uids) > 0 {
+		if uid, ok := result.Uids["user"]; ok {
+			_ = uid
+		}
+		if cuid, ok := result.Uids["channel"]; ok {
+			_ = cuid
+		}
+	}
+
+	return nil
+}
+
+// RegisterUser is the main exported function to register a new user
+func RegisterUser(ctx context.Context, req UserRegistrationRequest) (UserRegistrationResponse, error) {
+	// Debug: fmt.Printf("🌙 HecateRegister: Initiating user registration for %s\n", req.Recipient)
+	
+	// Generate unique user ID
+	userID := generateUserID()
+	
+    // Step 1: PII handling via Aegis (encryption-at-rest; no tokenization in dev)
+    // Note: Persona fields are encrypted when later persisted; channels encrypted above.
+    // For response compatibility, return empty tokens.
+    piiTokens := map[string]string{}
+	
+	// Step 2a: Determine roles
+	isFirst, err := isFirstUser()
+	if err != nil {
+		fmt.Printf("⚠️ Failed to check first user: %v\n", err)
+	}
+	var roleUIDs []string
+	if isFirst {
+		if uid, rerr := getRoleUID("default|superadmin", "superadmin"); rerr == nil && uid != "" {
+			roleUIDs = append(roleUIDs, uid)
+		} else {
+			fmt.Printf("⚠️ Superadmin role missing and could not be created: %v\n", rerr)
+		}
+	} else {
+		if uid, rerr := getRoleUID("default|registered", "registered"); rerr == nil && uid != "" {
+			roleUIDs = append(roleUIDs, uid)
+		} else {
+			fmt.Printf("⚠️ Registered role missing and could not be created: %v\n", rerr)
+		}
+	}
+
+	// Step 2b: Create user record in Dgraph with roles
+	if err := createUserInDgraph(req, userID, roleUIDs); err != nil {
+		return UserRegistrationResponse{
+			Success: false,
+			Message: "Failed to create user account",
+		}, fmt.Errorf("user creation failed: %v", err)
 	}
 	
-	if req.Email != "" {
-		tokens["email"] = fmt.Sprintf("tok_em_%d", time.Now().UnixNano())
+	// Step 3: Trigger identity verification
+	identityCheckID, err := triggerIdentityCheck(userID)
+	if err != nil {
+		fmt.Printf("⚠️ Identity check failed (non-critical): %v\n", err)
+		// Don't fail registration if identity check fails
 	}
 	
-	if req.Phone != "" {
-		tokens["phone"] = fmt.Sprintf("tok_ph_%d", time.Now().UnixNano())
+	// Step 4: Emit audit event for ISO compliance
+    // Compute UTC and best-effort local time based on requested timezone
+    utcNow := time.Now().UTC()
+    tzName := req.Timezone
+    loc, lerr := time.LoadLocation(tzName)
+    if lerr != nil || loc == nil {
+        loc = time.UTC
+        if tzName == "" {
+            tzName = "UTC"
+        }
+    }
+    localNow := utcNow.In(loc)
+    _, offset := localNow.Zone()
+
+    // Build metadata, merging client-provided req.Metadata
+    meta := map[string]interface{}{
+        "channelType":            req.ChannelType,
+        "channelDID":             req.ChannelDID,
+        "registrationSource":     "HecateRegister",
+        "piiEncrypted":           true,
+        "identityCheckID":        identityCheckID,
+        "timezone":               tzName,
+        "language":               req.Language,
+        "localTime":              localNow.Format(time.RFC3339),
+        "timestampUTC":           utcNow.Format(time.RFC3339),
+        "timezoneOffsetMinutes":  offset / 60,
+    }
+    if req.Metadata != nil {
+        for k, v := range req.Metadata {
+            // client-provided metadata keys override if duplicated
+            meta[k] = v
+        }
+    }
+
+    auditEvent := AuditEvent{
+        EventType: "UserRegistered",
+        UserID:    userID,
+        Timestamp: utcNow,
+        IPAddress: req.IPAddress,
+        UserAgent: req.UserAgent,
+        Metadata:  meta,
+    }
+	
+	auditEventID, err := emitAuditEvent(auditEvent)
+	if err != nil {
+		fmt.Printf("⚠️ Audit event failed (non-critical): %v\n", err)
+		// Don't fail registration if audit fails
 	}
 	
-	return &PIITokenizationResponse{
-		Tokens: tokens,
-		Status: "success",
+	// Return successful registration response
+	return UserRegistrationResponse{
+		Success:         true,
+		UserID:          userID,
+		Message:         "User registration completed successfully",
+		PIITokens:       piiTokens,
+		IdentityCheckID: identityCheckID,
+		AuditEventID:    auditEventID,
+		CreatedAt:       time.Now(),
 	}, nil
 }
 
@@ -248,219 +409,4 @@ func getRoleUID(roleKey, name string) (string, error) {
         return uid, nil
     }
     return "", fmt.Errorf("role created but UID not returned for %s", roleKey)
-}
-
-// createUserInDgraph stores the new user record in Dgraph
-func createUserInDgraph(req UserRegistrationRequest, userID string, roleUIDs []string) error {
-	// Validate channel type
-	switch req.ChannelType {
-	case "email", "phone":
-		// ok
-	default:
-		return fmt.Errorf("unsupported channel type: %s", req.ChannelType)
-	}
-
-	now := time.Now()
-	normRecipient := normalizeRecipient(req.ChannelType, req.Recipient)
-	chHash := hashString(normRecipient)
-	chKey := makeChannelKey(userID, req.ChannelType, chHash)
-	chUnique := fmt.Sprintf("%s|%s", req.ChannelType, chHash)
-
-	// Encrypt channel value and compute blind index (for equality lookups)
-	var valueEnc, valueBI string
-	if normRecipient != "" {
-		if ct, err := vcrypto.Encrypt("pii-contact", []byte(normRecipient)); err == nil {
-			valueEnc = ct
-		}
-		if h, err := vcrypto.HMAC("pii-contact-hmac", []byte(normRecipient)); err == nil {
-			valueBI = h
-		}
-	}
-
-	// Build N-Quads for User and UserChannels aligned with schema
-	nquads := fmt.Sprintf(`
-		_:user <dgraph.type> "User" .
-		_:user <did> %q .
-		_:user <status> "active" .
-		_:user <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
-		_:user <updatedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
-
-		_:channel <dgraph.type> "UserChannels" .
-		_:channel <user> _:user .
-		_:channel <userId> %q .
-		_:channel <channelType> %q .
-		_:channel <channelHash> %q .
-		_:channel <channelKey> %q .
-		_:channel <channelUnique> %q .
-		_:channel <verified> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-		_:channel <primary> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-		_:channel <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
-		_:channel <lastUsedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
-	`,
-		userID,
-		now.Format(time.RFC3339),
-		now.Format(time.RFC3339),
-		userID,
-		req.ChannelType,
-		chHash,
-		chKey,
-		chUnique,
-		now.Format(time.RFC3339),
-		now.Format(time.RFC3339),
-	)
-
-	if valueEnc != "" {
-		nquads += fmt.Sprintf("\n        _:channel <value_enc> %q .", valueEnc)
-	}
-	if valueBI != "" {
-		nquads += fmt.Sprintf("\n        _:channel <value_bi> %q .", valueBI)
-	}
-
-	// Link roles if provided
-	for _, rid := range roleUIDs {
-		nquads += fmt.Sprintf("\n        _:user <roles> <%s> .\n", rid)
-	}
-
-	// Execute mutation using Dgraph SDK
-	mutationObj := dgraph.NewMutation().WithSetNquads(nquads)
-	result, err := dgraph.ExecuteMutations("dgraph", mutationObj)
-	if err != nil {
-		return fmt.Errorf("failed to create user in Dgraph: %v", err)
-	}
-
-	// Optionally use returned UIDs
-	if len(result.Uids) > 0 {
-		if uid, ok := result.Uids["user"]; ok {
-			_ = uid
-		}
-		if cuid, ok := result.Uids["channel"]; ok {
-			_ = cuid
-		}
-	}
-
-	return nil
-}
-
-// RegisterUser is the main exported function to register a new user
-func RegisterUser(ctx context.Context, req UserRegistrationRequest) (UserRegistrationResponse, error) {
-	// Debug: fmt.Printf("🌙 HecateRegister: Initiating user registration for %s\n", req.Recipient)
-	
-	// Generate unique user ID
-	userID := generateUserID()
-	
-	// Step 1: PII Tokenization for ISO compliance
-	piiReq := PIITokenizationRequest{
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-	}
-	
-	switch req.ChannelType {
-	case "email":
-		piiReq.Email = req.Recipient
-	case "phone":
-		piiReq.Phone = req.Recipient
-	}
-	
-	piiResp, err := tokenizePII(piiReq)
-	if err != nil {
-		return UserRegistrationResponse{
-			Success: false,
-			Message: "Failed to tokenize PII data",
-		}, fmt.Errorf("PII tokenization failed: %v", err)
-	}
-	
-	// Step 2a: Determine roles
-	isFirst, err := isFirstUser()
-	if err != nil {
-		fmt.Printf("⚠️ Failed to check first user: %v\n", err)
-	}
-	var roleUIDs []string
-	if isFirst {
-		if uid, rerr := getRoleUID("default|superadmin", "superadmin"); rerr == nil && uid != "" {
-			roleUIDs = append(roleUIDs, uid)
-		} else {
-			fmt.Printf("⚠️ Superadmin role missing and could not be created: %v\n", rerr)
-		}
-	} else {
-		if uid, rerr := getRoleUID("default|registered", "registered"); rerr == nil && uid != "" {
-			roleUIDs = append(roleUIDs, uid)
-		} else {
-			fmt.Printf("⚠️ Registered role missing and could not be created: %v\n", rerr)
-		}
-	}
-
-	// Step 2b: Create user record in Dgraph with roles
-	if err := createUserInDgraph(req, userID, roleUIDs); err != nil {
-		return UserRegistrationResponse{
-			Success: false,
-			Message: "Failed to create user account",
-		}, fmt.Errorf("user creation failed: %v", err)
-	}
-	
-	// Step 3: Trigger identity verification
-	identityCheckID, err := triggerIdentityCheck(userID)
-	if err != nil {
-		fmt.Printf("⚠️ Identity check failed (non-critical): %v\n", err)
-		// Don't fail registration if identity check fails
-	}
-	
-	// Step 4: Emit audit event for ISO compliance
-    // Compute UTC and best-effort local time based on requested timezone
-    utcNow := time.Now().UTC()
-    tzName := req.Timezone
-    loc, lerr := time.LoadLocation(tzName)
-    if lerr != nil || loc == nil {
-        loc = time.UTC
-        if tzName == "" {
-            tzName = "UTC"
-        }
-    }
-    localNow := utcNow.In(loc)
-    _, offset := localNow.Zone()
-
-    // Build metadata, merging client-provided req.Metadata
-    meta := map[string]interface{}{
-        "channelType":            req.ChannelType,
-        "channelDID":             req.ChannelDID,
-        "registrationSource":     "HecateRegister",
-        "piiTokenized":           true,
-        "identityCheckID":        identityCheckID,
-        "timezone":               tzName,
-        "language":               req.Language,
-        "localTime":              localNow.Format(time.RFC3339),
-        "timestampUTC":           utcNow.Format(time.RFC3339),
-        "timezoneOffsetMinutes":  offset / 60,
-    }
-    if req.Metadata != nil {
-        for k, v := range req.Metadata {
-            // client-provided metadata keys override if duplicated
-            meta[k] = v
-        }
-    }
-
-    auditEvent := AuditEvent{
-        EventType: "UserRegistered",
-        UserID:    userID,
-        Timestamp: utcNow,
-        IPAddress: req.IPAddress,
-        UserAgent: req.UserAgent,
-        Metadata:  meta,
-    }
-	
-	auditEventID, err := emitAuditEvent(auditEvent)
-	if err != nil {
-		fmt.Printf("⚠️ Audit event failed (non-critical): %v\n", err)
-		// Don't fail registration if audit fails
-	}
-	
-	// Return successful registration response
-	return UserRegistrationResponse{
-		Success:         true,
-		UserID:          userID,
-		Message:         "User registration completed successfully",
-		PIITokens:       piiResp.Tokens,
-		IdentityCheckID: identityCheckID,
-		AuditEventID:    auditEventID,
-		CreatedAt:       time.Now(),
-	}, nil
 }

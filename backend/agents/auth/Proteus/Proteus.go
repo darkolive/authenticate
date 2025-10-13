@@ -13,7 +13,7 @@ import (
 
 	audit "backend/agents/audit/ThemisLog"
 	mfa "backend/agents/auth/CharonOTP"
-	vcrypto "backend/services/vault"
+	aegis "backend/services/aegis"
 
 	"github.com/hypermodeinc/modus/sdk/go/pkg/console"
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
@@ -29,134 +29,134 @@ import (
 // Example (SMS): {"userID":"did:app:123","channelType":"sms","value":"07943..."}
 
 func reassignChannelOwner(channelUID, oldClusterUID, newClusterUID string) error {
-    if strings.TrimSpace(channelUID) == "" || strings.TrimSpace(newClusterUID) == "" {
-        return fmt.Errorf("channelUID and newClusterUID are required")
-    }
-    // Build delete and set N-Quads
-    del := new(strings.Builder)
-    if strings.TrimSpace(oldClusterUID) != "" {
-        del.WriteString(fmt.Sprintf("<%s> <ownedBy> <%s> .\n", channelUID, oldClusterUID))
-        del.WriteString(fmt.Sprintf("<%s> <hasChannel> <%s> .\n", oldClusterUID, channelUID))
-    }
-    set := fmt.Sprintf("<%s> <ownedBy> <%s> .\n<%s> <hasChannel> <%s> .\n", channelUID, newClusterUID, newClusterUID, channelUID)
-    mu := dgraph.NewMutation().WithSetNquads(set)
-    if del.Len() > 0 { mu = mu.WithDelNquads(del.String()) }
-    _, err := dgraph.ExecuteMutations("dgraph", mu)
-    return err
+	if strings.TrimSpace(channelUID) == "" || strings.TrimSpace(newClusterUID) == "" {
+		return fmt.Errorf("channelUID and newClusterUID are required")
+	}
+	// Build delete and set N-Quads
+	del := new(strings.Builder)
+	if strings.TrimSpace(oldClusterUID) != "" {
+		del.WriteString(fmt.Sprintf("<%s> <ownedBy> <%s> .\n", channelUID, oldClusterUID))
+		del.WriteString(fmt.Sprintf("<%s> <hasChannel> <%s> .\n", oldClusterUID, channelUID))
+	}
+	set := fmt.Sprintf("<%s> <ownedBy> <%s> .\n<%s> <hasChannel> <%s> .\n", channelUID, newClusterUID, newClusterUID, channelUID)
+	mu := dgraph.NewMutation().WithSetNquads(set)
+	if del.Len() > 0 { mu = mu.WithDelNquads(del.String()) }
+	_, err := dgraph.ExecuteMutations("dgraph", mu)
+	return err
 }
 
 // ----- Linked channels query API -----
 
 type GetLinkedChannelsRequest struct {
-    UserID string `json:"userID"`
+	UserID string `json:"userID"`
 }
 
 type LinkedChannel struct {
-    UID             string    `json:"uid"`
-    ChannelType     string    `json:"channelType"`
-    Verified        bool      `json:"verified"`
-    NormalizedValue string    `json:"normalizedValue"`
-    Provider        string    `json:"provider,omitempty"`
-    Subject         string    `json:"subject,omitempty"`
-    LastVerifiedAt  time.Time `json:"lastVerifiedAt,omitempty"`
+	UID             string    `json:"uid"`
+	ChannelType     string    `json:"channelType"`
+	Verified        bool      `json:"verified"`
+	NormalizedValue string    `json:"normalizedValue"`
+	Provider        string    `json:"provider,omitempty"`
+	Subject         string    `json:"subject,omitempty"`
+	LastVerifiedAt  time.Time `json:"lastVerifiedAt,omitempty"`
 }
 
 type GetLinkedChannelsResponse struct {
-    ClusterUID string          `json:"clusterUID,omitempty"`
-    Channels   []LinkedChannel `json:"channels"`
-    Message    string          `json:"message,omitempty"`
+	ClusterUID string          `json:"clusterUID,omitempty"`
+	Channels   []LinkedChannel `json:"channels"`
+	Message    string          `json:"message,omitempty"`
 }
 
 // GetLinkedChannels returns the user's cluster UID and any linked channels
 func GetLinkedChannels(ctx context.Context, req GetLinkedChannelsRequest) (GetLinkedChannelsResponse, error) {
-    userUID, err := getUserUIDByDID(strings.TrimSpace(req.UserID))
-    if err != nil {
-        return GetLinkedChannelsResponse{Channels: nil, Message: "user not found"}, nil
-    }
-    q := fmt.Sprintf(`{
-      c(func: type(IdentityCluster)) @filter(uid_in(hasUser, %s)) {
-        uid
-        hasChannel {
-          uid
-          channelType
-          verified
-          value_enc
-          provider
-          subject
-          lastVerifiedAt
-        }
-      }
-    }`, userUID)
-    res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
-    if qerr != nil {
-        return GetLinkedChannelsResponse{Channels: nil, Message: fmt.Sprintf("query failed: %v", qerr)}, nil
-    }
-    var parsed struct {
-        C []struct {
-            UID        string `json:"uid"`
-            HasChannel []struct {
-                UID             string    `json:"uid"`
-                ChannelType     string    `json:"channelType"`
-                Verified        bool      `json:"verified"`
-                ValueEnc        string    `json:"value_enc"`
-                Provider        string    `json:"provider"`
-                Subject         string    `json:"subject"`
-                LastVerifiedAt  time.Time `json:"lastVerifiedAt"`
-            } `json:"hasChannel"`
-        } `json:"c"`
-    }
-    if res.Json != "" {
-        _ = json.Unmarshal([]byte(res.Json), &parsed)
-    }
-    out := GetLinkedChannelsResponse{Channels: []LinkedChannel{}}
-    if len(parsed.C) == 0 {
-        return out, nil
-    }
-    out.ClusterUID = strings.TrimSpace(parsed.C[0].UID)
-    for _, ch := range parsed.C[0].HasChannel {
-        var plain string
-        if strings.TrimSpace(ch.ValueEnc) != "" {
-            if pt, derr := vcrypto.Decrypt("pii-contact", strings.TrimSpace(ch.ValueEnc)); derr == nil {
-                plain = string(pt)
-            }
-        }
-        out.Channels = append(out.Channels, LinkedChannel{
-            UID:             ch.UID,
-            ChannelType:     ch.ChannelType,
-            Verified:        ch.Verified,
-            NormalizedValue: plain, // subject can view unencrypted
-            Provider:        ch.Provider,
-            Subject:         ch.Subject,
-            LastVerifiedAt:  ch.LastVerifiedAt,
-        })
-    }
-    return out, nil
+	userUID, err := getUserUIDByDID(strings.TrimSpace(req.UserID))
+	if err != nil {
+		return GetLinkedChannelsResponse{Channels: nil, Message: "user not found"}, nil
+	}
+	q := fmt.Sprintf(`{
+	  c(func: type(IdentityCluster)) @filter(uid_in(hasUser, %s)) {
+		uid
+		hasChannel {
+		  uid
+		  channelType
+		  verified
+		  value_enc
+		  provider
+		  subject
+		  lastVerifiedAt
+		}
+	  }
+	}`, userUID)
+	res, qerr := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
+	if qerr != nil {
+		return GetLinkedChannelsResponse{Channels: nil, Message: fmt.Sprintf("query failed: %v", qerr)}, nil
+	}
+	var parsed struct {
+		C []struct {
+			UID        string `json:"uid"`
+			HasChannel []struct {
+				UID             string    `json:"uid"`
+				ChannelType     string    `json:"channelType"`
+				Verified        bool      `json:"verified"`
+				ValueEnc        string    `json:"value_enc"`
+				Provider        string    `json:"provider"`
+				Subject         string    `json:"subject"`
+				LastVerifiedAt  time.Time `json:"lastVerifiedAt"`
+			} `json:"hasChannel"`
+		} `json:"c"`
+	}
+	if res.Json != "" {
+		_ = json.Unmarshal([]byte(res.Json), &parsed)
+	}
+	out := GetLinkedChannelsResponse{Channels: []LinkedChannel{}}
+	if len(parsed.C) == 0 {
+		return out, nil
+	}
+	out.ClusterUID = strings.TrimSpace(parsed.C[0].UID)
+	for _, ch := range parsed.C[0].HasChannel {
+		var plain string
+		if strings.TrimSpace(ch.ValueEnc) != "" {
+			if pt, derr := aegis.Decrypt("pii-contact", strings.TrimSpace(ch.ValueEnc)); derr == nil {
+				plain = string(pt)
+			}
+		}
+		out.Channels = append(out.Channels, LinkedChannel{
+			UID:             ch.UID,
+			ChannelType:     ch.ChannelType,
+			Verified:        ch.Verified,
+			NormalizedValue: plain, // subject can view unencrypted
+			Provider:        ch.Provider,
+			Subject:         ch.Subject,
+			LastVerifiedAt:  ch.LastVerifiedAt,
+		})
+	}
+	return out, nil
 }
 
 func getChannelOwner(channelUID string) (string, error) {
-    if strings.TrimSpace(channelUID) == "" { return "", fmt.Errorf("channelUID is required") }
-    q := fmt.Sprintf(`{ ch(func: uid(%s)) { ownedBy { uid } } }`, channelUID)
-    res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
-    if err != nil { return "", fmt.Errorf("owner lookup failed: %v", err) }
-    var parsed struct{ Ch []struct{ OwnedBy []struct{ UID string `json:"uid"` } `json:"ownedBy"` } `json:"ch"` }
-    if res.Json != "" { _ = json.Unmarshal([]byte(res.Json), &parsed) }
-    if len(parsed.Ch) == 0 || len(parsed.Ch[0].OwnedBy) == 0 { return "", nil }
-    return strings.TrimSpace(parsed.Ch[0].OwnedBy[0].UID), nil
+	if strings.TrimSpace(channelUID) == "" { return "", fmt.Errorf("channelUID is required") }
+	q := fmt.Sprintf(`{ ch(func: uid(%s)) { ownedBy { uid } } }`, channelUID)
+	res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
+	if err != nil { return "", fmt.Errorf("owner lookup failed: %v", err) }
+	var parsed struct{ Ch []struct{ OwnedBy []struct{ UID string `json:"uid"` } `json:"ownedBy"` } `json:"ch"` }
+	if res.Json != "" { _ = json.Unmarshal([]byte(res.Json), &parsed) }
+	if len(parsed.Ch) == 0 || len(parsed.Ch[0].OwnedBy) == 0 { return "", nil }
+	return strings.TrimSpace(parsed.Ch[0].OwnedBy[0].UID), nil
 }
 // Example (Email): {"userID":"did:app:123","channelType":"email","value":"user@example.com"}
 type LinkChannelStartRequest struct {
-    UserID      string `json:"userID"`
-    ChannelType string `json:"channelType"`
-    Value       string `json:"value"`
+	UserID      string `json:"userID"`
+	ChannelType string `json:"channelType"`
+	Value       string `json:"value"`
 }
 
 type LinkChannelStartResponse struct {
-    Success       bool      `json:"success"`
-    Message       string    `json:"message,omitempty"`
-    LinkID        string    `json:"linkId,omitempty"`        // OTP ID if applicable
-    ChallengeType string    `json:"challengeType,omitempty"` // "otp" for email/sms/whatsapp
-    Destination   string    `json:"destination,omitempty"`   // masked value for UI
-    ExpiresAt     string    `json:"expiresAt,omitempty"`
+	Success       bool      `json:"success"`
+	Message       string    `json:"message,omitempty"`
+	LinkID        string    `json:"linkId,omitempty"`        // OTP ID if applicable
+	ChallengeType string    `json:"challengeType,omitempty"` // "otp" for email/sms/whatsapp
+	Destination   string    `json:"destination,omitempty"`   // masked value for UI
+	ExpiresAt     string    `json:"expiresAt,omitempty"`
 }
 
 // LinkChannelConfirmRequest completes the linking by validating the challenge
@@ -251,33 +251,33 @@ func LinkChannelConfirm(ctx context.Context, req LinkChannelConfirmRequest) (Lin
 		return LinkChannelConfirmResponse{Success: false, Message: fmt.Sprintf("channel error: %v", err)}, nil
 	}
 
-    // Conflict handling: if already owned by a different cluster, reassign ownership to this user's cluster
-    if ownerUID, ownErr := getChannelOwner(channelUID); ownErr == nil && ownerUID != "" && ownerUID != clusterUID {
-        if err := reassignChannelOwner(channelUID, ownerUID, clusterUID); err != nil {
-            return LinkChannelConfirmResponse{Success: false, Message: fmt.Sprintf("claim failed: %v", err)}, nil
-        }
-        // Audit unlink from previous cluster
-        _, _ = audit.Log(audit.EntryParams{
-            Category:   "IDENTITY",
-            Action:     "CHANNEL_UNLINKED",
-            ObjectType: "Channel",
-            ObjectID:   channelUID,
-            PerformedBy: "Proteus",
-            Source:     "LinkChannelConfirm",
-            Severity:   "INFO",
-            Timestamp:  time.Now().UTC(),
-            Details: map[string]any{
-                "previousClusterUID": ownerUID,
-                "newClusterUID":     clusterUID,
-                "reason":            "claimed_via_verified_otp",
-            },
-        })
-    } else {
-        // No conflict (or already same cluster) — attach normally
-        if err := attachChannelToCluster(channelUID, clusterUID); err != nil {
-            return LinkChannelConfirmResponse{Success: false, Message: fmt.Sprintf("link error: %v", err)}, nil
-        }
-    }
+	// Conflict handling: if already owned by a different cluster, reassign ownership to this user's cluster
+	if ownerUID, ownErr := getChannelOwner(channelUID); ownErr == nil && ownerUID != "" && ownerUID != clusterUID {
+		if err := reassignChannelOwner(channelUID, ownerUID, clusterUID); err != nil {
+			return LinkChannelConfirmResponse{Success: false, Message: fmt.Sprintf("claim failed: %v", err)}, nil
+		}
+		// Audit unlink from previous cluster
+		_, _ = audit.Log(audit.EntryParams{
+			Category:   "IDENTITY",
+			Action:     "CHANNEL_UNLINKED",
+			ObjectType: "Channel",
+			ObjectID:   channelUID,
+			PerformedBy: "Proteus",
+			Source:     "LinkChannelConfirm",
+			Severity:   "INFO",
+			Timestamp:  time.Now().UTC(),
+			Details: map[string]any{
+				"previousClusterUID": ownerUID,
+				"newClusterUID":     clusterUID,
+				"reason":            "claimed_via_verified_otp",
+			},
+		})
+	} else {
+		// No conflict (or already same cluster) — attach normally
+		if err := attachChannelToCluster(channelUID, clusterUID); err != nil {
+			return LinkChannelConfirmResponse{Success: false, Message: fmt.Sprintf("link error: %v", err)}, nil
+		}
+	}
 	if err := markChannelVerified(channelUID); err != nil {
 		console.Warn(fmt.Sprintf("markChannelVerified warning: %v", err))
 	}
@@ -398,21 +398,21 @@ func getUserUIDByDID(userID string) (string, error) {
 }
 
 func getOrCreateClusterForUser(userUID string) (string, error) {
-    // Find existing cluster via forward edge (no reverse required)
-    q := fmt.Sprintf(`{
-      c(func: type(IdentityCluster)) @filter(uid_in(hasUser, %s)) {
-        uid
-      }
-    }`, userUID)
-    res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
-    if err != nil {
-        return "", fmt.Errorf("cluster lookup failed: %v", err)
-    }
-    var parsed struct{ C []struct{ UID string `json:"uid"` } `json:"c"` }
-    if res.Json != "" { _ = json.Unmarshal([]byte(res.Json), &parsed) }
-    if len(parsed.C) > 0 && strings.TrimSpace(parsed.C[0].UID) != "" {
-        return parsed.C[0].UID, nil
-    }
+	// Find existing cluster via forward edge (no reverse required)
+	q := fmt.Sprintf(`{
+	  c(func: type(IdentityCluster)) @filter(uid_in(hasUser, %s)) {
+		uid
+	  }
+	}`, userUID)
+	res, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(q))
+	if err != nil {
+		return "", fmt.Errorf("cluster lookup failed: %v", err)
+	}
+	var parsed struct{ C []struct{ UID string `json:"uid"` } `json:"c"` }
+	if res.Json != "" { _ = json.Unmarshal([]byte(res.Json), &parsed) }
+	if len(parsed.C) > 0 && strings.TrimSpace(parsed.C[0].UID) != "" {
+		return parsed.C[0].UID, nil
+	}
 	// Create cluster
 	now := time.Now().UTC().Format(time.RFC3339)
 	nq := fmt.Sprintf(`_:cluster <dgraph.type> "IdentityCluster" .
@@ -447,10 +447,10 @@ func getOrCreateChannel(ctype, normalizedValue, channelHash, provider, subject s
 	nq.WriteString(fmt.Sprintf("_:ch <channelType> %q.\n", ctype))
 	nq.WriteString(fmt.Sprintf("_:ch <channelHash> %q.\n", channelHash))
 	// Store encrypted value and blind index instead of plaintext
-	if ct, err := vcrypto.Encrypt("pii-contact", []byte(normalizedValue)); err == nil {
+	if ct, err := aegis.Encrypt("pii-contact", []byte(normalizedValue)); err == nil {
 		nq.WriteString(fmt.Sprintf("_:ch <value_enc> %q.\n", ct))
 	}
-	if bi, err := vcrypto.HMAC("pii-contact-hmac", []byte(normalizedValue)); err == nil {
+	if bi, err := aegis.HMAC("pii-contact-hmac", []byte(normalizedValue)); err == nil {
 		nq.WriteString(fmt.Sprintf("_:ch <value_bi> %q.\n", bi))
 	}
 	if provider != "" { nq.WriteString(fmt.Sprintf("_:ch <provider> %q.\n", provider)) }
@@ -576,10 +576,10 @@ _:uc <createdAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 _:uc <lastUsedAt> "%s"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
 `, userUID, did, lt, chHash, key, unique, now, now)
     // Attach encrypted value and blind index
-    if ct, err := vcrypto.Encrypt("pii-contact", []byte(normalized)); err == nil {
+    if ct, err := aegis.Encrypt("pii-contact", []byte(normalized)); err == nil {
         nq += fmt.Sprintf("\n_:uc <value_enc> %q .", ct)
     }
-    if bi, err := vcrypto.HMAC("pii-contact-hmac", []byte(normalized)); err == nil {
+    if bi, err := aegis.HMAC("pii-contact-hmac", []byte(normalized)); err == nil {
         nq += fmt.Sprintf("\n_:uc <value_bi> %q .", bi)
     }
     mu := dgraph.NewMutation().WithSetNquads(nq)

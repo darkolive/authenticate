@@ -31,14 +31,6 @@
         "X-Messaging-Service-Sid": "{{TWILIO_MESSAGING_SERVICE_SID}}",
         "X-Default-Country-Code": "{{TWILIO_DEFAULT_COUNTRY_CODE}}"
       }
-    },
-    "vault": {
-      "type": "http",
-      "baseUrl": "http://127.0.0.1:8200/v1/",
-      "headers": {
-        "X-Vault-Token": "{{VAULT_TOKEN}}",
-        "Content-Type": "application/json"
-      }
     }
   }
 }

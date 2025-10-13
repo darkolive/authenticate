@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	vcrypto "backend/services/vault"
+	aegis "backend/services/aegis"
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
 
@@ -29,7 +29,7 @@ type GetPIIResponse struct {
 	Message      string `json:"message,omitempty"`
 }
 
-// GetUserPII loads encrypted persona fields and decrypts them via Vault transit.
+// GetUserPII loads encrypted persona fields and decrypts them via Aegis.
 func GetUserPII(_ context.Context, req GetPIIRequest) (GetPIIResponse, error) {
 	if strings.TrimSpace(req.UserID) == "" {
 		return GetPIIResponse{Message: "userID is required"}, nil
@@ -71,17 +71,17 @@ func GetUserPII(_ context.Context, req GetPIIRequest) (GetPIIResponse, error) {
 	}
 	// Decrypt best-effort; partial success allowed.
 	if out.FirstNameEnc != "" {
-		if pt, derr := vcrypto.Decrypt("pii-identity", out.FirstNameEnc); derr == nil {
+		if pt, derr := aegis.Decrypt("pii-identity", out.FirstNameEnc); derr == nil {
 			out.FirstName = string(pt)
 		}
 	}
 	if out.LastNameEnc != "" {
-		if pt, derr := vcrypto.Decrypt("pii-identity", out.LastNameEnc); derr == nil {
+		if pt, derr := aegis.Decrypt("pii-identity", out.LastNameEnc); derr == nil {
 			out.LastName = string(pt)
 		}
 	}
 	if out.DisplayNameEnc != "" {
-		if pt, derr := vcrypto.Decrypt("pii-identity", out.DisplayNameEnc); derr == nil {
+		if pt, derr := aegis.Decrypt("pii-identity", out.DisplayNameEnc); derr == nil {
 			out.DisplayName = string(pt)
 		}
 	}

@@ -8,7 +8,7 @@ import (
     "time"
 
     audit "backend/agents/audit/ThemisLog"
-    vcrypto "backend/services/vault"
+    aegis "backend/services/aegis"
 
     "github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 )
@@ -104,9 +104,9 @@ func UpdateUserpersona(_ context.Context, req UpdatepersonaRequest) (Updateperso
 
     // Encrypt and store persona fields (no plaintext)
     if firstTrim != "" {
-        if ct, e := vcrypto.Encrypt("pii-identity", []byte(firstTrim)); e == nil {
+        if ct, e := aegis.Encrypt("pii-identity", []byte(firstTrim)); e == nil {
             nquads += fmt.Sprintf("\n<%s> <firstName_enc> %q .", uid, ct)
-            if bi, herr := vcrypto.HMAC("pii-identity-hmac", []byte(norm(firstTrim))); herr == nil {
+            if bi, herr := aegis.HMAC("pii-identity-hmac", []byte(norm(firstTrim))); herr == nil {
                 nquads += fmt.Sprintf("\n<%s> <firstName_bi> %q .", uid, bi)
             }
             updatedFields = append(updatedFields, "firstName_enc")
@@ -115,9 +115,9 @@ func UpdateUserpersona(_ context.Context, req UpdatepersonaRequest) (Updateperso
         }
     }
     if lastTrim != "" {
-        if ct, e := vcrypto.Encrypt("pii-identity", []byte(lastTrim)); e == nil {
+        if ct, e := aegis.Encrypt("pii-identity", []byte(lastTrim)); e == nil {
             nquads += fmt.Sprintf("\n<%s> <lastName_enc> %q .", uid, ct)
-            if bi, herr := vcrypto.HMAC("pii-identity-hmac", []byte(norm(lastTrim))); herr == nil {
+            if bi, herr := aegis.HMAC("pii-identity-hmac", []byte(norm(lastTrim))); herr == nil {
                 nquads += fmt.Sprintf("\n<%s> <lastName_bi> %q .", uid, bi)
             }
             updatedFields = append(updatedFields, "lastName_enc")
@@ -125,9 +125,9 @@ func UpdateUserpersona(_ context.Context, req UpdatepersonaRequest) (Updateperso
         }
     }
     if displayNameTrim != "" {
-        if ct, e := vcrypto.Encrypt("pii-identity", []byte(displayNameTrim)); e == nil {
+        if ct, e := aegis.Encrypt("pii-identity", []byte(displayNameTrim)); e == nil {
             nquads += fmt.Sprintf("\n<%s> <displayName_enc> %q .", uid, ct)
-            if bi, herr := vcrypto.HMAC("pii-identity-hmac", []byte(norm(displayNameTrim))); herr == nil {
+            if bi, herr := aegis.HMAC("pii-identity-hmac", []byte(norm(displayNameTrim))); herr == nil {
                 nquads += fmt.Sprintf("\n<%s> <displayName_bi> %q .", uid, bi)
             }
             updatedFields = append(updatedFields, "displayName_enc")
