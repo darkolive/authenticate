@@ -3,6 +3,7 @@ package main
 import (
     cerberus "backend/agents/auth/CerberusMFA"
     charonotp "backend/agents/auth/CharonOTP"
+    proteus "backend/agents/auth/Proteus"
     hecateregister "backend/agents/auth/HecateRegister"
     janusface "backend/agents/auth/JanusFace"
     persona "backend/agents/profile/Persona"
@@ -23,6 +24,57 @@ func SendOTP(req *charonotp.OTPRequest) charonotp.OTPResponse {
     resp, err := charonotp.SendOTP(context.Background(), *req)
     if err != nil {
         return charonotp.OTPResponse{Verified: false, Message: err.Error(), Channel: req.Channel}
+    }
+    return resp
+}
+
+// GetLinkedChannels returns the user's cluster UID and linked channels.
+func GetLinkedChannels(req *proteus.GetLinkedChannelsRequest) proteus.GetLinkedChannelsResponse {
+    if req == nil {
+        r := proteus.GetLinkedChannelsRequest{}
+        resp, err := proteus.GetLinkedChannels(context.Background(), r)
+        if err != nil {
+            return proteus.GetLinkedChannelsResponse{Channels: nil, Message: err.Error()}
+        }
+        return resp
+    }
+    resp, err := proteus.GetLinkedChannels(context.Background(), *req)
+    if err != nil {
+        return proteus.GetLinkedChannelsResponse{Channels: nil, Message: err.Error()}
+    }
+    return resp
+}
+
+// LinkChannelStart begins a channel link flow (OTP) for email/sms/whatsapp.
+func LinkChannelStart(req *proteus.LinkChannelStartRequest) proteus.LinkChannelStartResponse {
+    if req == nil {
+        r := proteus.LinkChannelStartRequest{}
+        resp, err := proteus.LinkChannelStart(context.Background(), r)
+        if err != nil {
+            return proteus.LinkChannelStartResponse{Success: false, Message: err.Error()}
+        }
+        return resp
+    }
+    resp, err := proteus.LinkChannelStart(context.Background(), *req)
+    if err != nil {
+        return proteus.LinkChannelStartResponse{Success: false, Message: err.Error()}
+    }
+    return resp
+}
+
+// LinkChannelConfirm completes the link after OTP verification.
+func LinkChannelConfirm(req *proteus.LinkChannelConfirmRequest) proteus.LinkChannelConfirmResponse {
+    if req == nil {
+        r := proteus.LinkChannelConfirmRequest{}
+        resp, err := proteus.LinkChannelConfirm(context.Background(), r)
+        if err != nil {
+            return proteus.LinkChannelConfirmResponse{Success: false, Message: err.Error()}
+        }
+        return resp
+    }
+    resp, err := proteus.LinkChannelConfirm(context.Background(), *req)
+    if err != nil {
+        return proteus.LinkChannelConfirmResponse{Success: false, Message: err.Error()}
     }
     return resp
 }

@@ -1,0 +1,79 @@
+# Proteus identity resolution schema
+
+# Core channel node representing a verifiable communication or account handle
+# One Channel should be owned by exactly one IdentityCluster
+
+type Channel {
+    channelType
+    channelHash
+    normalizedValue
+    provider
+    subject
+    verified
+    lastVerifiedAt
+    ownedBy
+}
+
+# A cluster of users and channels that we consider the same person
+# Proteus merges clusters based on evidence and user confirmations
+
+type IdentityCluster {
+    hasUser
+    hasChannel
+    trustScore
+    createdAt
+    updatedAt
+}
+
+# Evidence-backed merge candidates between two clusters
+# (planned for a later phase; included for completeness)
+
+type MergeCandidate {
+    clusterA
+    clusterB
+    evidence
+    score
+    status
+    createdAt
+}
+
+# Evidence items supporting a MergeCandidate (e.g., biometric match, device continuity)
+
+type Evidence {
+    evType
+    weight
+    details
+    observedAt
+}
+
+# Predicates
+
+channelType: string @index(exact) .
+channelHash: string @index(exact) @upsert .
+normalizedValue: string .
+value_enc: string .
+value_bi: string @index(exact) .
+provider: string @index(exact) .
+subject: string @index(exact) .
+verified: bool @index(bool) .
+lastVerifiedAt: datetime @index(hour) .
+
+ownedBy: uid @reverse .        # Channel -> IdentityCluster
+hasUser: [uid] @reverse .      # IdentityCluster -> User
+hasChannel: [uid] @reverse .   # IdentityCluster -> Channel
+
+trustScore: float .
+createdAt: datetime @index(hour) .
+updatedAt: datetime @index(hour) .
+
+clusterA: uid @reverse .
+clusterB: uid @reverse .
+evidence: [uid] @reverse .
+
+# Evidence predicates
+# Using short names to avoid collisions: evType, details
+
+evType: string @index(exact) .
+weight: float .
+details: string .
+observedAt: datetime @index(hour) .

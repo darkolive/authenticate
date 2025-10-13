@@ -1,0 +1,25 @@
+type MergeCandidate {
+    targetUser
+    candidateUser
+    channelType
+    channelHash
+    signals
+    score
+    status
+    candidateKey
+    createdAt
+    updatedAt
+    tenantId
+}
+
+targetUser: uid @reverse .
+candidateUser: uid @reverse .
+channelType: string @index(exact) .
+channelHash: string @index(exact) .
+signals: [string] .
+score: int .
+status: string @index(exact) . # PENDING, CONFIRMED, DISMISSED
+candidateKey: string @index(exact) @upsert .
+createdAt: datetime @index(hour) .
+updatedAt: datetime @index(hour) .
+tenantId: string .
